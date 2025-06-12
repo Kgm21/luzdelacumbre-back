@@ -1,57 +1,62 @@
 const express = require('express');
 const cors = require('cors');
-const { dbConnection } = require('../database/config');
+const { dbConnection } = require('../database/config'); // Ajustado para la raíz
 
-class Server{
-    constructor(){
-        this.app = express();
-        this.port = process.env.PORT;
-       this.paths = {
-            usuarios: '/api/usuarios',
-            /*roles: '/api/roles',
-            habitaciones: '/api/habitaciones',
-            disponibilidad: '/api/disponibilidad',
-            reservas: '/api/reservas',
-            auth: '/api/auth'*/
-    };
-        this.conectarDB();
+class Server {
+  constructor() {
+    this.app = express();
+    this.port = process.env.PORT || 3000;
+    this.authPath = '/api/auth';
+    this.usuariosPath = '/api/usuarios';
+    this.roomsPath = '/api/rooms';
+    this.bookingsPath = '/api/bookings';
+    this.availabilityPath = '/api/availability';
 
-       //Middlewares
-       this.middlewares();
+    // Conectar con Base de datos
+    this.conectarDB();
 
-       //Función para las rutas
-       this.routes();
-    }
+    // Middlewares
+    this.middlewares();
 
-    async conectarDB(){
-        await dbConnection();
-    }
+    // Función para las rutas
+    this.routes();
+  }
 
-    middlewares(){
-        //CORS
-        this.app.use(cors());
+  async conectarDB() {
+    await dbConnection();
+  }
 
-        //Leer lo que el usuario envía por el cuerpo de la petición
-        this.app.use(express.json());
+  middlewares() {
+    // CORS
+    this.app.use(cors());
 
-        //Definir la carpeta pública
-        this.app.use(express.static('public'));
-    }
+    // Leer lo que el usuario envía por el cuerpo de la petición
+    this.app.use(express.json());
 
-    routes(){
-         this.app.use(this.paths.usuarios, require('../routes/users'));
-        /*this.app.use(this.paths.auth, require('../routes/auth'));
-        this.app.use(this.paths.roles, require('../routes/roles'));
-        this.app.use(this.paths.habitaciones, require('../routes/habitaciones'));
-        this.app.use(this.paths.reservas, require('../routes/reservas'));
-        this.app.use(this.paths.disponibilidad, require('../routes/disponibilidad'));*/
-    }
+    // Definir la carpeta pública
+    this.app.use(express.static('public'));
 
-    listen(){
-        this.app.listen(this.port, () => {
-            console.log('Server online port: ', this.port);
-        })
-    }
+    // Manejo de errores 404 para rutas no encontradas
+    this.app.use((req, res) => {
+      res.status(404).json({
+        message: 'Ruta no encontrada',
+      });
+    });
+  }
+
+  routes() {
+    this.app.use(this.authPath, require('../routes/auth'));
+    this.app.use(this.usuariosPath, require('../routes/users'));
+    this.app.use(this.roomsPath, require('../routes/rooms'));
+    this.app.use(this.bookingsPath, require('../routes/bookings'));
+    this.app.use(this.availabilityPath, require('../routes/availability'));
+  }
+
+  listen() {
+    this.app.listen(this.port, () => {
+      console.log('Server online port: ', this.port);
+    });
+  }
 }
 
 module.exports = Server;

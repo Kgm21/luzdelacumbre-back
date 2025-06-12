@@ -1,11 +1,6 @@
-const express = require('express')
-const app = express()
-const port = 3000
+require('events').EventEmitter.defaultMaxListeners = 15; // Evita MaxListenersExceededWarning
+require('dotenv').config();
+const Server = require('./models/server');
 
-app.get('/', (req, res) => {
-  res.send('Hello World!')
-})
-
-app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`)
-})
+const server = new Server();
+server.listen();
