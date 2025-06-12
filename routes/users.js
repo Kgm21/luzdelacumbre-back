@@ -1,10 +1,12 @@
 const { Router } = require('express');
 const { check } = require('express-validator');
-const { getUsers, updateUser, deleteUser } = require('../controllers/userController');
+const { usuarioGet, usuarioPut, usuarioDelete } = require('../controllers/userController');
 const { validateFields } = require('../middlewares/validateFields');
 const { validateJWT } = require('../middlewares/validateJWT');
 const { isAdminRole } = require('../middlewares/validateRoles');
 const { isValidUser, isValidEmail } = require('../helpers/dbValidators');
+const { register } = require('../controllers/authController');
+
 
 const router = Router();
 
@@ -13,7 +15,7 @@ router.get('/', [
   validateJWT,
   isAdminRole,
   validateFields,
-], getUsers);
+], usuarioGet);
 
 // GET: Obtener un usuario por ID
 router.get('/:id', [
@@ -22,7 +24,7 @@ router.get('/:id', [
   check('id', 'No es un ID válido').isMongoId(),
   check('id').custom(isValidUser),
   validateFields,
-], getUsers);
+], usuarioGet);
 
 // POST: Crear un nuevo usuario (registro, manejado en authController)
 router.post('/', [
@@ -45,7 +47,7 @@ router.put('/:id', [
   check('email').optional().custom(isValidEmail),
   check('role', 'El rol no es válido').optional().isIn(['admin', 'client']),
   validateFields,
-], updateUser);
+], usuarioPut);
 
 // DELETE: Desactivar un usuario
 router.delete('/:id', [
@@ -54,6 +56,6 @@ router.delete('/:id', [
   check('id', 'No es un ID válido').isMongoId(),
   check('id').custom(isValidUser),
   validateFields,
-], deleteUser);
+], usuarioDelete);
 
 module.exports = router;

@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const { dbConnection } = require('../database/config'); // Ajustado para la raíz
+const { dbConnection } = require('../database/config');
 
 class Server {
   constructor() {
@@ -12,36 +12,42 @@ class Server {
     this.bookingsPath = '/api/bookings';
     this.availabilityPath = '/api/availability';
 
-    // Conectar con Base de datos
+    // Conectar con la base de datos
     this.conectarDB();
 
     // Middlewares
     this.middlewares();
 
-    // Función para las rutas
+    // Rutas
     this.routes();
+
+    // Manejo de errores 404 (movido aquí para ejecutarse después de las rutas)
+    this.app.use((req, res) => {
+      res.status(404).json({
+        message: 'Ruta no encontrada',
+      });
+    });
   }
 
   async conectarDB() {
-    await dbConnection();
+    try {
+      await dbConnection();
+      console.log('Base de datos conectada');
+    } catch (error) {
+      console.error('Error al conectar con la base de datos:', error);
+      throw new Error('No se pudo conectar con la base de datos');
+    }
   }
 
   middlewares() {
     // CORS
     this.app.use(cors());
 
-    // Leer lo que el usuario envía por el cuerpo de la petición
+    // Parsear el cuerpo de las solicitudes en JSON
     this.app.use(express.json());
 
-    // Definir la carpeta pública
+    // Servir archivos estáticos
     this.app.use(express.static('public'));
-
-    // Manejo de errores 404 para rutas no encontradas
-    this.app.use((req, res) => {
-      res.status(404).json({
-        message: 'Ruta no encontrada',
-      });
-    });
   }
 
   routes() {
@@ -54,7 +60,7 @@ class Server {
 
   listen() {
     this.app.listen(this.port, () => {
-      console.log('Server online port: ', this.port);
+      console.log('Servidor en línea en el puerto:', this.port);
     });
   }
 }
