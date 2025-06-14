@@ -5,6 +5,7 @@ const { generateJWT } = require('../helpers/generateJWT');
 const login = async (req, res) => {
   const { email, password } = req.body;
   try {
+    
     const user = await User.findOne({ email });
     if (!user || !user.isActive) {
       return res.status(400).json({
@@ -12,7 +13,8 @@ const login = async (req, res) => {
       });
     }
 
-    const validPassword = bcrypt.compareSync(password, user.password);
+    const validPassword = await bcrypt.compare(password, user.password);
+
     if (!validPassword) {
       return res.status(400).json({
         message: 'Correo o contraseña incorrectos',
@@ -33,26 +35,60 @@ const login = async (req, res) => {
   }
 };
 
-const register = async (req, res) => {
-  const { name, email, password, role = 'client' } = req.body;
+const register = async (req = request, res = response) => {
   try {
-    const user = new User({ name, email, password, role });
-    const salt = bcrypt.genSaltSync();
-    user.password = bcrypt.hashSync(password, salt);
-    await user.save();
+    const { name, apellido, email, password, role } = req.body;
 
-    const token = await generateJWT(user.id);
+    // Validaciones básicas (ya manejadas por express-validator)
+    console.log('Datos recibidos en register:', req.body); // Log para depurar
+
+    // Verificar si el correo ya existe
+    const existeCorreo = await User.findOne({ email });
+    if (existeCorreo) {
+      return res.status(400).json({ mensaje: 'El correo ya está registrado' });
+    }
+
+    // Encriptar la contraseña
+    const salt = bcrypt.genSaltSync(10);
+    const hash = bcrypt.hashSync(password, salt);
+
+    // Asignar rol
+    let rolAsignado = role || 'client'; // Usa el role enviado o 'client' por defecto
+    if (req.user?.rol === 'admin' && role) {
+      if (!['admin', 'client'].includes(role)) {
+        return res.status(400).json({ mensaje: 'Rol inválido' });
+      }
+      rolAsignado = role;
+    }
+
+    // Crear el usuario
+    const usuario = new User({ name, apellido, email, password: hash, role: rolAsignado });
+    console.log('Usuario a guardar en register:', usuario); // Log antes de save
+
+    // Guardar en la base de datos
+    await usuario.save();
+
     res.status(201).json({
-      message: 'Usuario registrado exitosamente',
-      user: { id: user.id, name: user.name, email: user.email, role: user.role },
-      token,
+      mensaje: 'Usuario registrado correctamente',
+      usuario
     });
   } catch (error) {
+    console.error('Error al registrar usuario:', error.stack);
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({
+        mensaje: 'Error de validación',
+        error: error.message
+      });
+    }
+    if (error.code === 11000) {
+      return res.status(400).json({ mensaje: 'El correo ya está registrado' });
+    }
     res.status(500).json({
-      message: 'Error al registrar usuario',
-      error: error.message,
+      mensaje: 'Error interno del servidor al registrar el usuario',
+      error: error.message
     });
   }
 };
+
 
 module.exports = { login, register };

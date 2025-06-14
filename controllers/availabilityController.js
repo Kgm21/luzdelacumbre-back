@@ -1,13 +1,24 @@
 const Availability = require('../models/Availability');
 
 const setAvailability = async (req, res) => {
+  const { roomId, date, isAvailable } = req.body;
+
+  // Validaciones previas
+  if (!roomId || !date || typeof isAvailable !== 'boolean') {
+    return res.status(400).json({ message: 'Datos incompletos o inválidos' });
+  }
+
+  if (isNaN(Date.parse(date))) {
+    return res.status(400).json({ message: 'Fecha inválida' });
+  }
+
   try {
-    const { roomId, date, isAvailable } = req.body;
     const availability = await Availability.findOneAndUpdate(
       { roomId, date },
       { isAvailable },
       { upsert: true, new: true }
     );
+
     res.json({
       message: 'Disponibilidad actualizada',
       availability,
@@ -19,6 +30,7 @@ const setAvailability = async (req, res) => {
     });
   }
 };
+
 
 const getAvailability = async (req, res) => {
   try {
@@ -51,15 +63,29 @@ const getAvailabilityById = async (req, res) => {
 };
 
 const updateAvailability = async (req, res) => {
+  const { roomId, date, isAvailable } = req.body;
+  const { id } = req.params;
+
+  // Validaciones previas
+  if (!roomId || !date || typeof isAvailable !== 'boolean') {
+    return res.status(400).json({ message: 'Datos incompletos o inválidos' });
+  }
+
+  if (isNaN(Date.parse(date))) {
+    return res.status(400).json({ message: 'Fecha inválida' });
+  }
+
   try {
-    const { id } = req.params;
-    const { roomId, date, isAvailable } = req.body;
-    const updatedAvailability = await Availability.findByIdAndUpdate(id, { roomId, date, isAvailable }, { new: true });
+    const updatedAvailability = await Availability.findByIdAndUpdate(
+      id,
+      { roomId, date, isAvailable },
+      { new: true }
+    );
+
     if (!updatedAvailability) {
-      return res.status(404).json({
-        message: 'Disponibilidad no encontrada',
-      });
+      return res.status(404).json({ message: 'Disponibilidad no encontrada' });
     }
+
     res.json({
       message: 'Disponibilidad actualizada',
       availability: updatedAvailability,
@@ -72,9 +98,11 @@ const updateAvailability = async (req, res) => {
   }
 };
 
+
 const deleteAvailability = async (req, res) => {
-  try {
     const { id } = req.params;
+  try {
+  
     const deletedAvailability = await Availability.findByIdAndDelete(id);
     if (!deletedAvailability) {
       return res.status(404).json({

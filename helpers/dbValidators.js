@@ -1,6 +1,8 @@
 const User = require('../models/user');
 const Room = require('../models/Room');
 const Booking = require('../models/Booking');
+const mongoose = require('mongoose');
+
 
 const isValidUser = async (id) => {
   const user = await User.findById(id);

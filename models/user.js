@@ -5,6 +5,10 @@ const UserSchema = Schema({
     type: String,
     required: [true, 'El nombre es obligatorio'],
   },
+  apellido: {
+    type: String,
+    required: [true, 'El apellido es obligatorio'],
+  },
   email: {
     type: String,
     required: [true, 'El correo es obligatorio'],

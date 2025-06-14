@@ -1,9 +1,33 @@
 const Room = require('../models/Room');
 
 const createRoom = async (req, res) => {
-  try {
+    try {
     const { roomNumber, type, price, description, imageUrl } = req.body;
-    const newRoom = new Room({ roomNumber, type, price, description, imageUrl });
+      // Validaciones básicas
+   if (!roomNumber || typeof roomNumber !== 'string' || roomNumber.trim() === '') {
+  return res.status(400).json({ message: 'Número de habitación inválido o faltante' });
+}
+const cleanedRoomNumber = roomNumber.trim();
+    if (typeof price !== 'number' || isNaN(price) || price <= 0) {
+  return res.status(400).json({ message: 'Precio debe ser un número positivo' });
+}
+
+
+    if (!type || typeof type !== 'string' || type.trim() === '') {
+      return res.status(400).json({ message: 'Tipo de habitación inválido o faltante' });
+    }
+
+    if (price === undefined || typeof price !== 'number' || price <= 0) {
+      return res.status(400).json({ message: 'Precio debe ser un número positivo' });
+    }
+
+    const newRoom = new Room({ 
+  roomNumber: roomNumber.trim(),
+  type: type.trim(),
+  price, 
+  description, 
+  imageUrl 
+});
     await newRoom.save();
     res.status(201).json({
       message: 'Habitación creada',
@@ -55,12 +79,57 @@ const getRoomById = async (req, res) => {
 const updateRoom = async (req, res) => {
   try {
     const { id } = req.params;
-    const updatedRoom = await Room.findByIdAndUpdate(id, req.body, { new: true });
-    if (!updatedRoom) {
-      return res.status(404).json({
-        message: 'Habitación no encontrada',
-      });
+    const { roomNumber, type, price, description, imageUrl } = req.body;
+
+    // Objeto que guardará solo los campos válidos para actualizar
+    const fieldsToUpdate = {};
+
+    if (roomNumber !== undefined) {
+      if (typeof roomNumber !== 'string' || roomNumber.trim() === '') {
+        return res.status(400).json({ message: 'Número de habitación inválido' });
+      }
+      fieldsToUpdate.roomNumber = roomNumber.trim();
     }
+
+    if (type !== undefined) {
+      if (typeof type !== 'string' || type.trim() === '') {
+        return res.status(400).json({ message: 'Tipo de habitación inválido' });
+      }
+      fieldsToUpdate.type = type.trim();
+    }
+
+    if (price !== undefined) {
+      if (typeof price !== 'number' || isNaN(price) || price <= 0) {
+        return res.status(400).json({ message: 'Precio debe ser un número positivo' });
+      }
+      fieldsToUpdate.price = price;
+    }
+
+    if (description !== undefined) {
+      if (typeof description !== 'string') {
+        return res.status(400).json({ message: 'Descripción debe ser texto' });
+      }
+      fieldsToUpdate.description = description.trim();
+    }
+
+    if (imageUrl !== undefined) {
+      if (typeof imageUrl !== 'string') {
+        return res.status(400).json({ message: 'URL de imagen debe ser texto' });
+      }
+      fieldsToUpdate.imageUrl = imageUrl.trim();
+    }
+
+    // Si no se envió ningún campo válido para actualizar, podemos avisar
+    if (Object.keys(fieldsToUpdate).length === 0) {
+      return res.status(400).json({ message: 'No se proporcionaron campos válidos para actualizar' });
+    }
+
+    const updatedRoom = await Room.findByIdAndUpdate(id, fieldsToUpdate, { new: true });
+
+    if (!updatedRoom) {
+      return res.status(404).json({ message: 'Habitación no encontrada' });
+    }
+
     res.json({
       message: 'Habitación actualizada',
       room: updatedRoom,
@@ -77,6 +146,8 @@ const updateRoom = async (req, res) => {
     });
   }
 };
+
+
 
 const deleteRoom = async (req, res) => {
   try {

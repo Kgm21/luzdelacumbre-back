@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const { check } = require('express-validator');
-const { usuarioGet, usuarioPut, usuarioDelete } = require('../controllers/userController');
+const { usuarioGet, usuarioPut, usuarioDelete, usuarioGetID } = require('../controllers/userController');
 const { validateFields } = require('../middlewares/validateFields');
 const { validateJWT } = require('../middlewares/validateJWT');
 const { isAdminRole } = require('../middlewares/validateRoles');
@@ -19,12 +19,14 @@ router.get('/', [
 
 // GET: Obtener un usuario por ID
 router.get('/:id', [
-  validateJWT,
-  isAdminRole,
+  validateJWT,               // Valida que venga token válido
+  isAdminRole,               // Valida que sea admin
   check('id', 'No es un ID válido').isMongoId(),
   check('id').custom(isValidUser),
   validateFields,
-], usuarioGet);
+], usuarioGetID);
+
+
 
 // POST: Crear un nuevo usuario (registro, manejado en authController)
 router.post('/', [

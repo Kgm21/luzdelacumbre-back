@@ -14,6 +14,7 @@ router.post('/login', [
 
 router.post('/register', [
   check('name', 'El nombre es obligatorio').not().isEmpty(),
+   check('apellido', 'El apellido es obligatorio').not().isEmpty(), // Añadido
   check('email', 'El correo no es válido').isEmail(),
   check('email').custom(isValidEmail),
   check('password', 'La contraseña debe tener al menos 6 caracteres').isLength({ min: 6 }),

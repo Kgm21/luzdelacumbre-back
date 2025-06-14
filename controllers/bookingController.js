@@ -2,18 +2,35 @@ const Booking = require('../models/Booking');
 const Availability = require('../models/Availability');
 
 const createBooking = async (req, res) => {
-  try {
-    const { userId, roomId, checkInDate, checkOutDate, totalPrice } = req.body;
+  const { userId, roomId, checkInDate, checkOutDate, totalPrice } = req.body;
 
+  // Validaciones previas
+  if (!userId || !roomId || !checkInDate || !checkOutDate || typeof totalPrice !== 'number') {
+    return res.status(400).json({ message: 'Datos incompletos o inválidos' });
+  }
+
+  if (isNaN(Date.parse(checkInDate)) || isNaN(Date.parse(checkOutDate))) {
+    return res.status(400).json({ message: 'Fechas inválidas' });
+  }
+
+  if (new Date(checkOutDate) <= new Date(checkInDate)) {
+    return res.status(400).json({ message: 'La fecha de salida debe ser posterior a la de entrada' });
+  }
+
+  const nights = (new Date(checkOutDate) - new Date(checkInDate)) / (1000 * 60 * 60 * 24);
+  if (nights < 1) {
+    return res.status(400).json({ message: 'La reserva debe ser de al menos una noche' });
+  }
+
+  try {
     // Verificar disponibilidad
     const availability = await Availability.find({
       roomId,
-      date: { $gte: new Date(checkInDate), $lte: new Date(checkOutDate) },
+      date: { $gte: new Date(checkInDate), $lt: new Date(checkOutDate) }, // < para evitar reservar también la noche de salida
       isAvailable: true,
     });
 
-    const days = (new Date(checkOutDate) - new Date(checkInDate)) / (1000 * 60 * 60 * 24);
-    if (availability.length !== days) {
+    if (availability.length !== nights) {
       return res.status(400).json({
         message: 'La habitación no está disponible en las fechas solicitadas',
       });
@@ -29,9 +46,9 @@ const createBooking = async (req, res) => {
     });
     await newBooking.save();
 
-    // Actualizar disponibilidad
+    // Marcar como no disponible los días reservados
     await Availability.updateMany(
-      { roomId, date: { $gte: new Date(checkInDate), $lte: new Date(checkOutDate) } },
+      { roomId, date: { $gte: new Date(checkInDate), $lt: new Date(checkOutDate) } },
       { isAvailable: false }
     );
 
@@ -46,6 +63,7 @@ const createBooking = async (req, res) => {
     });
   }
 };
+
 
 const getBookings = async (req, res) => {
   try {
@@ -81,46 +99,80 @@ const updateBooking = async (req, res) => {
   try {
     const { id } = req.params;
     const { userId, roomId, checkInDate, checkOutDate, totalPrice, status } = req.body;
+    if (totalPrice !== undefined && typeof totalPrice !== 'number') {
+       return res.status(400).json({ message: 'El precio total debe ser un número' });
+    }
 
-    // Si se actualizan fechas o habitación, verificar disponibilidad
-    if (checkInDate || checkOutDate || roomId) {
-      const newCheckIn = checkInDate ? new Date(checkInDate) : (await Booking.findById(id)).checkInDate;
-      const newCheckOut = checkOutDate ? new Date(checkOutDate) : (await Booking.findById(id)).checkOutDate;
-      const newRoomId = roomId || (await Booking.findById(id)).roomId;
+    const originalBooking = await Booking.findById(id);
+    if (!originalBooking) {
+      return res.status(404).json({ message: 'Reserva no encontrada' });
+    }
 
+    const newRoomId = roomId || originalBooking.roomId;
+    const newCheckIn = checkInDate ? new Date(checkInDate) : originalBooking.checkInDate;
+    const newCheckOut = checkOutDate ? new Date(checkOutDate) : originalBooking.checkOutDate;
+
+    if (newCheckOut <= newCheckIn) {
+      return res.status(400).json({ message: 'La fecha de salida debe ser posterior a la de entrada' });
+    }
+
+    const days = (newCheckOut - newCheckIn) / (1000 * 60 * 60 * 24);
+    if (days < 1) {
+      return res.status(400).json({ message: 'La reserva debe ser de al menos una noche' });
+    }
+
+    // Si cambió la habitación o las fechas, verificar disponibilidad
+    const datesChanged =
+      newRoomId.toString() !== originalBooking.roomId.toString() ||
+      newCheckIn.getTime() !== originalBooking.checkInDate.getTime() ||
+      newCheckOut.getTime() !== originalBooking.checkOutDate.getTime();
+
+    if (datesChanged) {
       const availability = await Availability.find({
         roomId: newRoomId,
-        date: { $gte: newCheckIn, $lte: newCheckOut },
+        date: { $gte: newCheckIn, $lt: newCheckOut },
         isAvailable: true,
       });
 
-      const days = (new Date(newCheckOut) - new Date(newCheckIn)) / (1000 * 60 * 60 * 24);
       if (availability.length !== days) {
         return res.status(400).json({
-          message: 'La habitación no está disponible en las fechas solicitadas',
+          message: 'La habitación no está disponible en las nuevas fechas',
         });
       }
 
-      // Actualizar disponibilidad si se cambian las fechas o la habitación
-      if (checkInDate || checkOutDate || roomId) {
-        const originalBooking = await Booking.findById(id);
-        await Availability.updateMany(
-          { roomId: originalBooking.roomId, date: { $gte: originalBooking.checkInDate, $lte: originalBooking.checkOutDate } },
-          { isAvailable: true }
-        );
-        await Availability.updateMany(
-          { roomId: newRoomId, date: { $gte: newCheckIn, $lte: newCheckOut } },
-          { isAvailable: false }
-        );
-      }
+      // Restaurar disponibilidad antigua
+      await Availability.updateMany(
+        {
+          roomId: originalBooking.roomId,
+          date: { $gte: originalBooking.checkInDate, $lt: originalBooking.checkOutDate },
+        },
+        { isAvailable: true }
+      );
+
+      // Bloquear nuevas fechas
+      await Availability.updateMany(
+        {
+          roomId: newRoomId,
+          date: { $gte: newCheckIn, $lt: newCheckOut },
+        },
+        { isAvailable: false }
+      );
     }
 
-    const updatedBooking = await Booking.findByIdAndUpdate(id, { userId, roomId, checkInDate, checkOutDate, totalPrice, status }, { new: true });
-    if (!updatedBooking) {
-      return res.status(404).json({
-        message: 'Reserva no encontrada',
-      });
-    }
+    // Actualizar reserva
+    const updatedBooking = await Booking.findByIdAndUpdate(
+      id,
+      {
+        userId: userId || originalBooking.userId,
+        roomId: newRoomId,
+        checkInDate: newCheckIn,
+        checkOutDate: newCheckOut,
+        totalPrice: typeof totalPrice === 'number' ? totalPrice : originalBooking.totalPrice,
+        status: status || originalBooking.status,
+      },
+      { new: true }
+    );
+
     res.json({
       message: 'Reserva actualizada',
       booking: updatedBooking,
@@ -132,6 +184,7 @@ const updateBooking = async (req, res) => {
     });
   }
 };
+
 
 const deleteBooking = async (req, res) => {
   try {
@@ -145,9 +198,12 @@ const deleteBooking = async (req, res) => {
 
     // Restaurar disponibilidad
     await Availability.updateMany(
-      { roomId: deletedBooking.roomId, date: { $gte: deletedBooking.checkInDate, $lte: deletedBooking.checkOutDate } },
-      { isAvailable: true }
-    );
+  {
+    roomId: deletedBooking.roomId,
+    date: { $gte: deletedBooking.checkInDate, $lt: deletedBooking.checkOutDate }
+  },
+  { isAvailable: true }
+);
 
     res.json({
       message: 'Reserva eliminada',
