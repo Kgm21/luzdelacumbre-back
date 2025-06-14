@@ -210,14 +210,14 @@ const usuarioDelete = async (req = request, res = response) => {
     }
 
   
-    if (!usuario.estado) {
+    if (!usuario.isActive) {
       return res.status(400).json({
         mensaje: "El usuario ya está inhabilitado"
       });
     }
 
  
-    const usuarioInhabilitado = await Usuario.findByIdAndUpdate(id, { estado: false }, { new: true });
+    const usuarioInhabilitado = await Usuario.findByIdAndUpdate(id, { isActive: false }, { new: true });
 
     res.json({
       mensaje: "Usuario inhabilitado correctamente",
