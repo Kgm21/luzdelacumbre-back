@@ -8,7 +8,7 @@ const ReservaSchema = Schema({
   },
   roomId: {
     type: Schema.Types.ObjectId,
-    ref: 'Room',
+    ref: 'habitacion',
     required: [true, 'El ID de la habitación es obligatorio'],
   },
   checkInDate: {

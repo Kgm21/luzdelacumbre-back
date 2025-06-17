@@ -1,47 +1,23 @@
 const { Schema, model } = require('mongoose');
 
 const HabitacionSchema = Schema({
-  roomNumber: {
-    type: String,
-    required: [true, 'El número de habitación es obligatorio'],
-    unique: true,
-    trim: true,
-  },
+  roomNumber: { type: String, required: true, unique: true, trim: true },
   type: {
     type: String,
-    required: [true, 'El tipo de habitación es obligatorio'],
-    enum: {
-      values: ['individual', 'doble', 'suite', 'familiar', 'deluxe'],
-      message: 'Tipo de habitación no válido',
-    },
+    default: 'cabaña',
+    immutable: true // evita que se modifique
   },
-  price: {
+  price: { type: Number, required: true, min: 0 },
+  description: { type: String, trim: true, default: '' },
+  capacity: {
     type: Number,
-    required: [true, 'El precio es obligatorio'],
-    min: [0, 'El precio no puede ser negativo'],
+    required: [true, 'La capacidad es obligatoria'],
+    min: [1, 'La capacidad mínima es 1'],
   },
-  description: {
-    type: String,
-    trim: true,
-    default: '',
-  },
-  imageUrl: {
-    type: String,
-    trim: true,
-    default: '',
-  },
-  isAvailable: {
-    type: Boolean,
-    default: true,
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now,
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now,
-  },
+  imageUrls: [{ type: String }],
+  isAvailable: { type: Boolean, default: true },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
 });
 
 HabitacionSchema.index({ type: 1 });
@@ -56,4 +32,5 @@ HabitacionSchema.pre('findOneAndUpdate', function (next) {
   next();
 });
 
-module.exports = model('Habitacion', HabitacionSchema);
+module.exports = model('Habitacion', HabitacionSchema, 'habitacions');
+

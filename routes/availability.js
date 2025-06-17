@@ -1,6 +1,15 @@
 const { Router } = require('express');
 const { check } = require('express-validator');
-const { setAvailability, getAvailability, getAvailabilityById, updateAvailability, deleteAvailability } = require('../controllers/availabilityController');
+const {
+  setAvailability,
+  getAvailability,
+  getAvailabilityById,
+  updateAvailability,
+  deleteAvailability,
+  findAvailableRooms,
+  initAvailability
+} = require('../controllers/availabilityController');
+
 const { validateFields } = require('../middlewares/validateFields');
 const { validateJWT } = require('../middlewares/validateJWT');
 const { isAdminRole } = require('../middlewares/validateRoles');
@@ -8,14 +17,23 @@ const { isValidRoom } = require('../helpers/dbValidators');
 
 const router = Router();
 
-// GET: Obtener todas las disponibilidades (solo administradores)
+// ✅ Rutas específicas (deben ir antes que /:id)
+router.post('/init', [
+  validateJWT,
+  isAdminRole,
+  validateFields
+], initAvailability);
+
+// ✅ Rutas públicas o semipúblicas
+router.get('/available-rooms', findAvailableRooms);
+
+// ✅ Rutas protegidas para admin
 router.get('/', [
   validateJWT,
   isAdminRole,
   validateFields,
 ], getAvailability);
 
-// GET: Obtener una disponibilidad por ID (solo administradores)
 router.get('/:id', [
   validateJWT,
   isAdminRole,
@@ -23,7 +41,6 @@ router.get('/:id', [
   validateFields,
 ], getAvailabilityById);
 
-// POST: Crear o actualizar una disponibilidad (solo administradores)
 router.post('/', [
   validateJWT,
   isAdminRole,
@@ -34,7 +51,6 @@ router.post('/', [
   validateFields,
 ], setAvailability);
 
-// PUT: Actualizar una disponibilidad (solo administradores)
 router.put('/:id', [
   validateJWT,
   isAdminRole,
@@ -46,7 +62,6 @@ router.put('/:id', [
   validateFields,
 ], updateAvailability);
 
-// DELETE: Eliminar una disponibilidad (solo administradores)
 router.delete('/:id', [
   validateJWT,
   isAdminRole,

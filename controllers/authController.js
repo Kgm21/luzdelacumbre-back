@@ -53,8 +53,9 @@ const register = async (req = request, res = response) => {
     const hash = bcrypt.hashSync(password, salt);
 
     // Asignar rol
-    let rolAsignado = role || 'client'; // Usa el role enviado o 'client' por defecto
-    if (req.user?.rol === 'admin' && role) {
+    let rolAsignado = 'client'; // por defecto siempre client
+
+    if (req.user?.role === 'admin' && role) {
       if (!['admin', 'client'].includes(role)) {
         return res.status(400).json({ mensaje: 'Rol inválido' });
       }
@@ -89,6 +90,7 @@ const register = async (req = request, res = response) => {
     });
   }
 };
+
 
 
 module.exports = { login, register };

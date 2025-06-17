@@ -1,16 +1,16 @@
 const { Schema, model } = require('mongoose');
 
-const DisponibilidadSchema = Schema({
+const DisponibilidadSchema = new Schema({
   roomId: {
     type: Schema.Types.ObjectId,
-    ref: 'habitacion',
+    ref: 'Habitacion',
     required: [true, 'El ID de la habitación es obligatorio'],
   },
   date: {
     type: Date,
     required: [true, 'La fecha es obligatoria'],
   },
-  isDisponibilidad: {
+  isAvailable: {
     type: Boolean,
     required: true,
     default: true,
@@ -19,4 +19,4 @@ const DisponibilidadSchema = Schema({
 
 DisponibilidadSchema.index({ roomId: 1, date: 1 }, { unique: true });
 
-module.exports = model('disponibilidad', DisponibilidadSchema);
+module.exports = model('Availability', DisponibilidadSchema, 'disponibilidad');

@@ -14,8 +14,7 @@ router.get('/', getRooms);
 // GET: Obtener una habitación por ID
 router.get('/:id', [
   validateJWT,
-  isAdminRole,
-  check('id', 'No es un ID válido').isMongoId(),
+   check('id', 'No es un ID válido').isMongoId(),
   check('id').custom(isValidRoom),
   validateFields,
 ], getRoomById);
@@ -26,7 +25,6 @@ router.post('/', [
   isAdminRole,
   check('roomNumber', 'El número de habitación es obligatorio').not().isEmpty(),
   check('roomNumber').custom(isValidRoomNumber),
-  check('type', 'El tipo de habitación es obligatorio').isIn(['individual', 'doble', 'suite', 'familiar', 'deluxe']),
   check('price', 'El precio debe ser un número positivo').isFloat({ min: 0 }),
   validateFields,
 ], createRoom);
