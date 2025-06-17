@@ -55,7 +55,7 @@ const initAvailability = async (req, res) => {
     }));
 
     await Availability.bulkWrite(bulkOps);
-    await aplicarReservasASuDisponibilidad();
+    
 
     res.json({ message: 'Disponibilidad inicializada, respetando reservas existentes' });
   } catch (error) {
@@ -63,32 +63,7 @@ const initAvailability = async (req, res) => {
     res.status(500).json({ message: 'Error al inicializar disponibilidad', error: error.message });
   }
 };
-const aplicarReservasASuDisponibilidad = async () => {
-  const reservas = await Reserva.find(); // O como sea tu modelo
-  const bulkOps = [];
 
-  for (const reserva of reservas) {
-    let currentDate = new Date(reserva.checkInDate);
-
-    while (currentDate < reserva.checkOutDate) {
-      const date = new Date(Date.UTC(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate()));
-
-      bulkOps.push({
-        updateOne: {
-          filter: { roomId: reserva.roomId, date },
-          update: { $set: { isAvailable: false } }
-        }
-      });
-
-      currentDate.setDate(currentDate.getDate() + 1);
-    }
-  }
-
-  if (bulkOps.length) {
-    await Availability.bulkWrite(bulkOps);
-    console.log('Reservas aplicadas a la disponibilidad');
-  }
-};
 
 const setAvailability = async (req, res) => {
   const { roomId, date, isAvailable } = req.body;
