@@ -85,76 +85,134 @@ const setAvailability = async (req, res) => {
 
 const getAvailability = async (req, res) => {
     try {
-        const { roomId, date } = req.query;
+        const { roomId, startDate, endDate, guests } = req.query; // Ahora esperamos 'guests'
 
-        console.log('--- getAvailability Start ---');
-        console.log('Query received - roomId:', roomId, 'date:', date);
+        console.log('--- getAvailability (Range & Guests) Start ---');
+        console.log('Query received - roomId:', roomId, 'startDate:', startDate, 'endDate:', endDate, 'guests:', guests);
 
-        const matchStage = {}; // Objeto para la primera etapa $match
+        const queryDateRange = {};
+        let datesToCheck = [];
+        let minCapacity = null;
 
-        // --- Manejo y validación de roomId ---
-        if (roomId) {
-            if (!mongoose.Types.ObjectId.isValid(roomId)) {
-                console.log('roomId inválido, retornando 400');
-                return res.status(400).json({ message: 'ID de habitación inválido' });
+        // --- Validación y construcción del rango de fechas ---
+        if (startDate && typeof startDate === 'string' && startDate.match(/^\d{4}-\d{2}-\d{2}$/) &&
+            endDate && typeof endDate === 'string' && endDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            
+            const start = new Date(Date.UTC(parseInt(startDate.substring(0,4)), parseInt(startDate.substring(5,7)) - 1, parseInt(startDate.substring(8,10)), 0, 0, 0, 0));
+            const end = new Date(Date.UTC(parseInt(endDate.substring(0,4)), parseInt(endDate.substring(5,7)) - 1, parseInt(endDate.substring(8,10)), 0, 0, 0, 0));
+
+            if (start >= end) {
+                return res.status(400).json({ message: 'La fecha de inicio debe ser anterior a la fecha de fin.' });
+            }
+
+            for (let d = new Date(start); d < end; d.setUTCDate(d.getUTCDate() + 1)) {
+                datesToCheck.push(new Date(d));
             }
             
-            // Verificamos si la habitación existe usando el ObjectId
+            if (datesToCheck.length === 0) {
+                 return res.status(400).json({ message: 'Rango de fechas inválido o sin días válidos.' });
+            }
+
+            queryDateRange.$in = datesToCheck;
+            
+            console.log('Dates to check for range:', datesToCheck.map(d => d.toISOString().substring(0, 10)));
+
+        } else if (startDate || endDate) {
+            return res.status(400).json({ message: 'Por favor, proporcione un rango de fechas válido (YYYY-MM-DD).' });
+        } else {
+            console.log('No se proporcionó rango de fechas. La consulta puede ser muy amplia.');
+            // Considerar añadir un límite o paginación aquí si no se proporciona rango.
+        }
+
+        // --- Validación de la cantidad de pasajeros (guests) ---
+        if (guests) {
+            const parsedGuests = parseInt(guests);
+            if (isNaN(parsedGuests) || parsedGuests <= 0) {
+                return res.status(400).json({ message: 'Cantidad de pasajeros (guests) inválida. Debe ser un número positivo.' });
+            }
+            minCapacity = parsedGuests; // Guardamos la capacidad mínima requerida
+            console.log('Minimum capacity required (guests):', minCapacity);
+        }
+
+        const matchStage = {};
+        if (roomId && mongoose.Types.ObjectId.isValid(roomId)) {
             const roomObjectId = new mongoose.Types.ObjectId(roomId);
             const roomExists = await Room.exists({ _id: roomObjectId }); 
-            
-            console.log('Existencia habitación:', roomExists ? roomExists._id : null); // Loguea el _id si existe
-
             if (!roomExists) {
-                console.log('Habitación no encontrada, retornando 404');
-                return res.status(404).json({ message: 'La habitación con ese ID no existe' });
+                return res.status(404).json({ message: 'La habitación con ese ID no existe.' });
             }
-
-            // Aquí es donde aseguramos el ObjectId para la agregación
-            matchStage.roomId = roomObjectId; 
-        } else {
-            console.log('No se proporcionó roomId, no se agregará filtro de habitación.');
+            matchStage.roomId = roomObjectId;
+        } else if (roomId) {
+            return res.status(400).json({ message: 'ID de habitación inválido.' });
         }
 
-        // --- Manejo y validación de date ---
-        if (date) {
-            if (typeof date === 'string' && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
-                const [year, month, day] = date.split('-').map(Number);
-                const startOfDayUTC = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
-                const endOfDayUTC = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999));
-                
-                console.log('Constructed Date Range (UTC) - Start:', startOfDayUTC.toISOString(), 'End:', endOfDayUTC.toISOString());
-                matchStage.date = { $gte: startOfDayUTC, $lte: endOfDayUTC };
-            } else {
-                console.log('Fecha inválida detectada, retornando 400');
-                return res.status(400).json({ message: 'Fecha inválida' });
-            }
-        } else {
-            console.log('No se proporcionó fecha, no se agregará filtro de fecha.');
+        if (Object.keys(queryDateRange).length > 0) {
+            matchStage.date = queryDateRange;
         }
 
-        console.log('MongoDB Aggregation Match Object (JSON Stringify):', JSON.stringify(matchStage, null, 2));
         console.log('MongoDB Aggregation Match Object (RAW):', matchStage);
 
-        // --- Construcción del Pipeline de Agregación ---
         const pipeline = [
-            { $match: matchStage }, // Usa el objeto 'matchStage' que ya contiene el ObjectId
+            { $match: matchStage }, // 1. Primer filtro (roomId y/o rango de fechas)
             {
-                $lookup: {
-                    from: 'habitacions', // ¡Este nombre de colección es CRUCIAL y debe ser EXACTO!
-                    localField: 'roomId',
+                $group: { // 2. Agrupar por roomId para verificar todas las fechas
+                    _id: "$roomId",
+                    countDatesAvailable: { 
+                        $sum: { $cond: [{ $eq: ["$isAvailable", true] }, 1, 0] } // Contar solo las que son 'true'
+                    },
+                    totalDatesInQuery: { $sum: 1 } // Contar todos los documentos encontrados para ese roomId y rango
+                }
+            },
+            {
+                $match: { // 3. Asegurar que todas las fechas del rango estén disponibles
+                    $expr: {
+                        $and: [
+                            { $eq: ["$countDatesAvailable", datesToCheck.length] },
+                            { $eq: ["$totalDatesInQuery", datesToCheck.length] }
+                        ]
+                    }
+                }
+            },
+            {
+                $lookup: { // 4. Unir con la colección de habitaciones
+                    from: 'habitacions',
+                    localField: '_id',
                     foreignField: '_id',
                     as: 'habitacion'
                 }
             },
-            { $unwind: '$habitacion' },
-            { $match: { 'habitacion.isAvailable': true } } // Filtra por habitaciones marcadas como disponibles
+            { $unwind: '$habitacion' }, // 5. Desenrollar la habitación
+            { $match: { 'habitacion.isAvailable': true } } // 6. Filtro por disponibilidad general de la habitación
         ];
 
-        // --- Log del Pipeline para depuración (con serialización de ObjectId para Compass) ---
-        console.log('Full Aggregation Pipeline (for Compass - FINAL):', JSON.stringify(pipeline, (key, value) => {
+        // 7. Añadir el filtro de capacidad si se proporcionó el parámetro 'guests'
+        if (minCapacity !== null) {
+            pipeline.push({
+                $match: {
+                    'habitacion.capacity': { $gte: minCapacity } // La capacidad de la habitación debe ser mayor o igual a los huéspedes solicitados
+                }
+            });
+        }
+
+        // 8. Proyectar los campos finales
+        pipeline.push({
+            $project: {
+                _id: "$_id", // El roomId
+                roomNumber: "$habitacion.roomNumber",
+                type: "$habitacion.type",
+                price: "$habitacion.price",
+                capacity: "$habitacion.capacity",
+                imageUrls: "$habitacion.imageUrls",
+                description: "$habitacion.description",
+                // isAvailable: "$habitacion.isAvailable", // No es estrictamente necesario ya que ya filtramos por esto
+            }
+        });
+
+
+        // Serialización del pipeline para Compass
+        console.log('Full Aggregation Pipeline (for Compass - RANGE & GUESTS):', JSON.stringify(pipeline, (key, value) => {
             if (value && typeof value === 'object' && value.constructor.name === 'ObjectId') {
-                return { "$oid": value.toHexString() }; // Formato para Compass
+                return { "$oid": value.toHexString() };
             }
             if (value instanceof Date) {
                 return value.toISOString();
@@ -162,7 +220,7 @@ const getAvailability = async (req, res) => {
             return value;
         }, 2));
 
-        console.log('Ejecutando agregación...');
+        console.log('Ejecutando agregación para rango y pasajeros...');
         const result = await Availability.aggregate(pipeline);
 
         console.log('Aggregation Results Count:', result.length);
@@ -172,7 +230,7 @@ const getAvailability = async (req, res) => {
             console.log('No se encontraron disponibilidades para los criterios.');
             return res.status(404).json({
                 message: 'No se encontraron disponibilidades para los criterios proporcionados',
-                criteria: { roomId, date }
+                criteria: { roomId, startDate, endDate, guests }
             });
         }
 
@@ -180,16 +238,15 @@ const getAvailability = async (req, res) => {
         return res.json(result);
 
     } catch (error) {
-        console.error('Error al obtener disponibilidad:', error);
+        console.error('Error al obtener disponibilidad por rango y pasajeros:', error);
         return res.status(500).json({
-            message: 'Error al obtener disponibilidad',
+            message: 'Error al obtener disponibilidad por rango y pasajeros',
             error: error.message,
         });
     } finally {
-        console.log('--- getAvailability End ---');
+        console.log('--- getAvailability (Range & Guests) End ---');
     }
 };
-
 const getAvailabilityById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -214,36 +271,139 @@ const getAvailabilityById = async (req, res) => {
 
 // ** findAvailableRooms UNIFICADO Y CORREGIDO **
 const findAvailableRooms = async (req, res) => {
-  try {
-    const { date } = req.query;
+    try {
+        const { roomId, startDate, endDate, guests } = req.query;
 
-    if (!date || isNaN(Date.parse(date))) {
-      return res.status(400).json({ message: 'Fecha inválida o faltante' });
+        const queryDateRange = {};
+        let datesToCheck = [];
+        let minCapacity = null;
+
+        if (startDate && typeof startDate === 'string' && startDate.match(/^\d{4}-\d{2}-\d{2}$/) &&
+            endDate && typeof endDate === 'string' && endDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            
+            const start = new Date(Date.UTC(parseInt(startDate.substring(0,4)), parseInt(startDate.substring(5,7)) - 1, parseInt(startDate.substring(8,10)), 0, 0, 0, 0));
+            const end = new Date(Date.UTC(parseInt(endDate.substring(0,4)), parseInt(endDate.substring(5,7)) - 1, parseInt(endDate.substring(8,10)), 0, 0, 0, 0));
+            
+            if (start >= end) {
+                return res.status(400).json({ message: 'La fecha de inicio debe ser anterior a la fecha de fin.' });
+            }
+
+            for (let d = new Date(start); d < end; d.setUTCDate(d.getUTCDate() + 1)) {
+                datesToCheck.push(new Date(d));
+            }
+            
+            if (datesToCheck.length === 0) {
+                 return res.status(400).json({ message: 'Rango de fechas inválido o sin días válidos.' });
+            }
+
+            queryDateRange.$in = datesToCheck;
+            
+        } else if (startDate || endDate) {
+            return res.status(400).json({ message: 'Por favor, proporcione un rango de fechas válido (YYYY-MM-DD).' });
+        } else {
+            // Este bloque se ejecuta si no se proporcionan startDate ni endDate.
+            // Para 'available-rooms' normalmente esperas fechas.
+            // Si la ruta GET '/' también usa esta función sin fechas, se debe ajustar la lógica aquí.
+            return res.status(400).json({ message: 'Las fechas de inicio y fin son obligatorias para buscar habitaciones disponibles.' });
+        }
+
+        if (guests) {
+            const parsedGuests = parseInt(guests);
+            if (isNaN(parsedGuests) || parsedGuests <= 0) {
+                return res.status(400).json({ message: 'Cantidad de pasajeros (guests) inválida. Debe ser un número positivo.' });
+            }
+            minCapacity = parsedGuests;
+        }
+
+        const matchStage = {};
+        if (roomId && mongoose.Types.ObjectId.isValid(roomId)) {
+            const roomObjectId = new mongoose.Types.ObjectId(roomId);
+            const roomExists = await Room.exists({ _id: roomObjectId }); 
+            if (!roomExists) {
+                return res.status(404).json({ message: 'La habitación con ese ID no existe.' });
+            }
+            matchStage.roomId = roomObjectId;
+        } else if (roomId) {
+            return res.status(400).json({ message: 'ID de habitación inválido.' });
+        }
+
+        if (Object.keys(queryDateRange).length > 0) {
+            matchStage.date = queryDateRange;
+        }
+
+        const pipeline = [
+            { $match: matchStage },
+            {
+                $group: {
+                    _id: "$roomId",
+                    countDatesAvailable: { 
+                        $sum: { $cond: [{ $eq: ["$isAvailable", true] }, 1, 0] } 
+                    },
+                    totalDatesInQuery: { $sum: 1 }
+                }
+            },
+            {
+                $match: {
+                    $expr: {
+                        $and: [
+                            { $eq: ["$countDatesAvailable", datesToCheck.length] },
+                            { $eq: ["$totalDatesInQuery", datesToCheck.length] }
+                        ]
+                    }
+                }
+            },
+            {
+                $lookup: {
+                    from: 'habitacions',
+                    localField: '_id',
+                    foreignField: '_id',
+                    as: 'habitacion'
+                }
+            },
+            { $unwind: '$habitacion' },
+            { $match: { 'habitacion.isAvailable': true } }
+        ];
+
+        if (minCapacity !== null) {
+            pipeline.push({
+                $match: {
+                    'habitacion.capacity': { $gte: minCapacity }
+                }
+            });
+        }
+
+        pipeline.push({
+            $project: {
+                _id: "$_id",
+                roomNumber: "$habitacion.roomNumber",
+                type: "$habitacion.type",
+                price: "$habitacion.price",
+                capacity: "$habitacion.capacity",
+                imageUrls: "$habitacion.imageUrls",
+                description: "$habitacion.description"
+            }
+        });
+
+        const result = await Availability.aggregate(pipeline);
+
+        if (result.length === 0) {
+            return res.status(404).json({
+                message: 'No se encontraron disponibilidades para los criterios proporcionados',
+                criteria: { roomId, startDate, endDate, guests }
+            });
+        }
+
+        return res.json(result);
+
+    } catch (error) {
+        console.error('Error al obtener disponibilidad por rango y pasajeros:', error);
+        return res.status(500).json({
+            message: 'Error al obtener disponibilidad por rango y pasajeros',
+            error: error.message,
+        });
     }
-
-    const inputDate = new Date(date);
-    // Asegura que la fecha de búsqueda sea el inicio del día UTC
-    const dateToSearch = new Date(Date.UTC(inputDate.getFullYear(), inputDate.getMonth(), inputDate.getDate()));
-
-    // Buscar disponibilidades donde isAvailable sea true y la fecha coincida
-    const available = await Availability.find({
-      date: dateToSearch, // Usa la fecha UTC normalizada
-      isAvailable: true,
-    }).populate('roomId');
-
-    const availableRooms = available
-      .map((entry) => entry.roomId)
-      .filter((room) => room !== null && room.isAvailable === true); // Filtra por habitaciones disponibles también
-
-    res.json(availableRooms);
-  } catch (error) {
-    console.error('Error al buscar habitaciones disponibles:', error);
-    res.status(500).json({
-      message: 'Error al buscar habitaciones disponibles',
-      error: error.message,
-    });
-  }
 };
+
 
 const updateAvailability = async (req, res) => {
   const { roomId, date, isAvailable } = req.body;
