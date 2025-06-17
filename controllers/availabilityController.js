@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const Availability = require('../models/Availability');
 const Room = require('../models/Room');
+const Reserva = require('../models/Booking')
 
 const initAvailability = async (req, res) => {
   try {
@@ -9,20 +10,38 @@ const initAvailability = async (req, res) => {
     const endDate = new Date();
     endDate.setMonth(endDate.getMonth() + 5);
 
+    // Obtener todas las disponibilidades existentes en el rango
+    const existingAvailabilities = await Availability.find({
+      date: { $gte: startDate, $lte: endDate }
+    });
+
+    // Crear un mapa para saber cuáles fechas/rooms ya están en false
+    const unavailableMap = new Map();
+    existingAvailabilities.forEach(({ roomId, date, isAvailable }) => {
+      if (!isAvailable) {
+        const key = roomId.toString() + date.toISOString().slice(0,10);
+        unavailableMap.set(key, false);
+      }
+    });
+
     const availabilitiesToInsert = [];
 
     for (const room of rooms) {
       let currentDate = new Date(startDate);
       
       while (currentDate <= endDate) {
-        // Asegura que la fecha se guarde como inicio del día UTC
         const dateToStore = new Date(Date.UTC(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate()));
-        
+        const key = room._id.toString() + dateToStore.toISOString().slice(0,10);
+
+        // Solo setear isAvailable true si no está marcado false
+        const isAvailable = unavailableMap.has(key) ? false : true;
+
         availabilitiesToInsert.push({
           roomId: room._id,
           date: dateToStore,
-          isAvailable: true,
+          isAvailable,
         });
+
         currentDate.setDate(currentDate.getDate() + 1);
       }
     }
@@ -36,11 +55,38 @@ const initAvailability = async (req, res) => {
     }));
 
     await Availability.bulkWrite(bulkOps);
+    await aplicarReservasASuDisponibilidad();
 
-    res.json({ message: 'Disponibilidad generada por 5 meses para todas las habitaciones' });
+    res.json({ message: 'Disponibilidad inicializada, respetando reservas existentes' });
   } catch (error) {
     console.error('Error al inicializar disponibilidad:', error);
     res.status(500).json({ message: 'Error al inicializar disponibilidad', error: error.message });
+  }
+};
+const aplicarReservasASuDisponibilidad = async () => {
+  const reservas = await Reserva.find(); // O como sea tu modelo
+  const bulkOps = [];
+
+  for (const reserva of reservas) {
+    let currentDate = new Date(reserva.checkInDate);
+
+    while (currentDate < reserva.checkOutDate) {
+      const date = new Date(Date.UTC(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate()));
+
+      bulkOps.push({
+        updateOne: {
+          filter: { roomId: reserva.roomId, date },
+          update: { $set: { isAvailable: false } }
+        }
+      });
+
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+  }
+
+  if (bulkOps.length) {
+    await Availability.bulkWrite(bulkOps);
+    console.log('Reservas aplicadas a la disponibilidad');
   }
 };
 
@@ -84,169 +130,132 @@ const setAvailability = async (req, res) => {
 };
 
 const getAvailability = async (req, res) => {
-    try {
-        const { roomId, startDate, endDate, guests } = req.query; // Ahora esperamos 'guests'
+  try {
+    const { roomId, startDate, endDate, guests, page = 1, limit = 20 } = req.query;
 
-        console.log('--- getAvailability (Range & Guests) Start ---');
-        console.log('Query received - roomId:', roomId, 'startDate:', startDate, 'endDate:', endDate, 'guests:', guests);
-
-        const queryDateRange = {};
-        let datesToCheck = [];
-        let minCapacity = null;
-
-        // --- Validación y construcción del rango de fechas ---
-        if (startDate && typeof startDate === 'string' && startDate.match(/^\d{4}-\d{2}-\d{2}$/) &&
-            endDate && typeof endDate === 'string' && endDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
-            
-            const start = new Date(Date.UTC(parseInt(startDate.substring(0,4)), parseInt(startDate.substring(5,7)) - 1, parseInt(startDate.substring(8,10)), 0, 0, 0, 0));
-            const end = new Date(Date.UTC(parseInt(endDate.substring(0,4)), parseInt(endDate.substring(5,7)) - 1, parseInt(endDate.substring(8,10)), 0, 0, 0, 0));
-
-            if (start >= end) {
-                return res.status(400).json({ message: 'La fecha de inicio debe ser anterior a la fecha de fin.' });
-            }
-
-            for (let d = new Date(start); d < end; d.setUTCDate(d.getUTCDate() + 1)) {
-                datesToCheck.push(new Date(d));
-            }
-            
-            if (datesToCheck.length === 0) {
-                 return res.status(400).json({ message: 'Rango de fechas inválido o sin días válidos.' });
-            }
-
-            queryDateRange.$in = datesToCheck;
-            
-            console.log('Dates to check for range:', datesToCheck.map(d => d.toISOString().substring(0, 10)));
-
-        } else if (startDate || endDate) {
-            return res.status(400).json({ message: 'Por favor, proporcione un rango de fechas válido (YYYY-MM-DD).' });
-        } else {
-            console.log('No se proporcionó rango de fechas. La consulta puede ser muy amplia.');
-            // Considerar añadir un límite o paginación aquí si no se proporciona rango.
-        }
-
-        // --- Validación de la cantidad de pasajeros (guests) ---
-        if (guests) {
-            const parsedGuests = parseInt(guests);
-            if (isNaN(parsedGuests) || parsedGuests <= 0) {
-                return res.status(400).json({ message: 'Cantidad de pasajeros (guests) inválida. Debe ser un número positivo.' });
-            }
-            minCapacity = parsedGuests; // Guardamos la capacidad mínima requerida
-            console.log('Minimum capacity required (guests):', minCapacity);
-        }
-
-        const matchStage = {};
-        if (roomId && mongoose.Types.ObjectId.isValid(roomId)) {
-            const roomObjectId = new mongoose.Types.ObjectId(roomId);
-            const roomExists = await Room.exists({ _id: roomObjectId }); 
-            if (!roomExists) {
-                return res.status(404).json({ message: 'La habitación con ese ID no existe.' });
-            }
-            matchStage.roomId = roomObjectId;
-        } else if (roomId) {
-            return res.status(400).json({ message: 'ID de habitación inválido.' });
-        }
-
-        if (Object.keys(queryDateRange).length > 0) {
-            matchStage.date = queryDateRange;
-        }
-
-        console.log('MongoDB Aggregation Match Object (RAW):', matchStage);
-
-        const pipeline = [
-            { $match: matchStage }, // 1. Primer filtro (roomId y/o rango de fechas)
-            {
-                $group: { // 2. Agrupar por roomId para verificar todas las fechas
-                    _id: "$roomId",
-                    countDatesAvailable: { 
-                        $sum: { $cond: [{ $eq: ["$isAvailable", true] }, 1, 0] } // Contar solo las que son 'true'
-                    },
-                    totalDatesInQuery: { $sum: 1 } // Contar todos los documentos encontrados para ese roomId y rango
-                }
-            },
-            {
-                $match: { // 3. Asegurar que todas las fechas del rango estén disponibles
-                    $expr: {
-                        $and: [
-                            { $eq: ["$countDatesAvailable", datesToCheck.length] },
-                            { $eq: ["$totalDatesInQuery", datesToCheck.length] }
-                        ]
-                    }
-                }
-            },
-            {
-                $lookup: { // 4. Unir con la colección de habitaciones
-                    from: 'habitacions',
-                    localField: '_id',
-                    foreignField: '_id',
-                    as: 'habitacion'
-                }
-            },
-            { $unwind: '$habitacion' }, // 5. Desenrollar la habitación
-            { $match: { 'habitacion.isAvailable': true } } // 6. Filtro por disponibilidad general de la habitación
-        ];
-
-        // 7. Añadir el filtro de capacidad si se proporcionó el parámetro 'guests'
-        if (minCapacity !== null) {
-            pipeline.push({
-                $match: {
-                    'habitacion.capacity': { $gte: minCapacity } // La capacidad de la habitación debe ser mayor o igual a los huéspedes solicitados
-                }
-            });
-        }
-
-        // 8. Proyectar los campos finales
-        pipeline.push({
-            $project: {
-                _id: "$_id", // El roomId
-                roomNumber: "$habitacion.roomNumber",
-                type: "$habitacion.type",
-                price: "$habitacion.price",
-                capacity: "$habitacion.capacity",
-                imageUrls: "$habitacion.imageUrls",
-                description: "$habitacion.description",
-                // isAvailable: "$habitacion.isAvailable", // No es estrictamente necesario ya que ya filtramos por esto
-            }
-        });
-
-
-        // Serialización del pipeline para Compass
-        console.log('Full Aggregation Pipeline (for Compass - RANGE & GUESTS):', JSON.stringify(pipeline, (key, value) => {
-            if (value && typeof value === 'object' && value.constructor.name === 'ObjectId') {
-                return { "$oid": value.toHexString() };
-            }
-            if (value instanceof Date) {
-                return value.toISOString();
-            }
-            return value;
-        }, 2));
-
-        console.log('Ejecutando agregación para rango y pasajeros...');
-        const result = await Availability.aggregate(pipeline);
-
-        console.log('Aggregation Results Count:', result.length);
-        console.log('Aggregation Results Data:', JSON.stringify(result, null, 2));
-
-        if (result.length === 0) {
-            console.log('No se encontraron disponibilidades para los criterios.');
-            return res.status(404).json({
-                message: 'No se encontraron disponibilidades para los criterios proporcionados',
-                criteria: { roomId, startDate, endDate, guests }
-            });
-        }
-
-        console.log('Disponibilidades encontradas, retornando resultados.');
-        return res.json(result);
-
-    } catch (error) {
-        console.error('Error al obtener disponibilidad por rango y pasajeros:', error);
-        return res.status(500).json({
-            message: 'Error al obtener disponibilidad por rango y pasajeros',
-            error: error.message,
-        });
-    } finally {
-        console.log('--- getAvailability (Range & Guests) End ---');
+    // Validación básica guests
+    let minCapacity = null;
+    if (guests) {
+      const g = parseInt(guests);
+      if (isNaN(g) || g <= 0) {
+        return res.status(400).json({ message: 'Cantidad de pasajeros inválida.' });
+      }
+      minCapacity = g;
     }
+
+    // Validar fechas
+    if ((startDate && !endDate) || (!startDate && endDate)) {
+      return res.status(400).json({ message: 'Debe proporcionar rango completo de fechas (startDate y endDate).' });
+    }
+
+    let datesToCheck = [];
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+
+      if (isNaN(start) || isNaN(end)) {
+        return res.status(400).json({ message: 'Fechas inválidas.' });
+      }
+      if (start >= end) {
+        return res.status(400).json({ message: 'La fecha de inicio debe ser anterior a la fecha de fin.' });
+      }
+
+      for (let d = new Date(start); d < end; d.setDate(d.getDate() + 1)) {
+        datesToCheck.push(new Date(d));
+      }
+    }
+
+    // Construir filtro
+    const matchStage = {};
+    if (roomId) {
+      if (!mongoose.Types.ObjectId.isValid(roomId)) {
+        return res.status(400).json({ message: 'ID de habitación inválido.' });
+      }
+      matchStage.roomId = new mongoose.Types.ObjectId(roomId);
+    }
+    if (datesToCheck.length > 0) {
+      matchStage.date = { $in: datesToCheck };
+    }
+
+    // Verificar que la habitación exista si se pasó roomId
+    if (roomId) {
+      const exists = await Room.exists({ _id: matchStage.roomId });
+      if (!exists) {
+        return res.status(404).json({ message: 'La habitación con ese ID no existe.' });
+      }
+    }
+
+    // Pipeline de agregación
+    const pipeline = [
+      { $match: matchStage },
+      {
+        $group: {
+          _id: "$roomId",
+          countDatesAvailable: {
+            $sum: { $cond: [{ $eq: ["$isAvailable", true] }, 1, 0] }
+          },
+          totalDatesInQuery: { $sum: 1 }
+        }
+      },
+      {
+        $match: {
+          $expr: {
+            $and: [
+              { $eq: ["$countDatesAvailable", datesToCheck.length] },
+              { $eq: ["$totalDatesInQuery", datesToCheck.length] }
+            ]
+          }
+        }
+      },
+      {
+        $lookup: {
+          from: 'habitacions', // revisa el nombre correcto
+          localField: '_id',
+          foreignField: '_id',
+          as: 'habitacion'
+        }
+      },
+      { $unwind: '$habitacion' },
+      { $match: { 'habitacion.isAvailable': true } },
+    ];
+
+    if (minCapacity !== null) {
+      pipeline.push({
+        $match: { 'habitacion.capacity': { $gte: minCapacity } }
+      });
+    }
+
+    // Paginación
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    pipeline.push({ $skip: skip });
+    pipeline.push({ $limit: parseInt(limit) });
+
+    pipeline.push({
+      $project: {
+        _id: "$_id",
+        roomNumber: "$habitacion.roomNumber",
+        type: "$habitacion.type",
+        price: "$habitacion.price",
+        capacity: "$habitacion.capacity",
+        imageUrls: "$habitacion.imageUrls",
+        description: "$habitacion.description",
+      }
+    });
+
+    const results = await Availability.aggregate(pipeline);
+
+    if (results.length === 0) {
+      return res.status(404).json({ message: 'No se encontraron disponibilidades para los criterios proporcionados.' });
+    }
+
+    return res.json({ page: parseInt(page), limit: parseInt(limit), results });
+
+  } catch (error) {
+    console.error('Error en getAvailability:', error);
+    return res.status(500).json({ message: 'Error interno en el servidor.', error: error.message });
+  }
 };
+
 const getAvailabilityById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -406,77 +415,88 @@ const findAvailableRooms = async (req, res) => {
 
 
 const updateAvailability = async (req, res) => {
-  const { roomId, date, isAvailable } = req.body;
+    const { id } = req.params;
+    const { roomId, date, isAvailable } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ message: 'ID de disponibilidad inválido' });
+    }
+
+    const updateFields = {};
+
+    if (roomId !== undefined) {
+        if (!mongoose.Types.ObjectId.isValid(roomId)) {
+            return res.status(400).json({ message: 'ID de habitación inválido' });
+        }
+        updateFields.roomId = roomId;
+    }
+
+    if (date !== undefined) {
+        if (isNaN(Date.parse(date))) {
+            return res.status(400).json({ message: 'Fecha inválida' });
+        }
+        const inputDate = new Date(date);
+        updateFields.date = new Date(Date.UTC(inputDate.getFullYear(), inputDate.getMonth(), inputDate.getDate()));
+    }
+
+    if (isAvailable !== undefined) {
+        if (typeof isAvailable !== 'boolean') {
+            return res.status(400).json({ message: 'El estado de disponibilidad debe ser booleano' });
+        }
+        updateFields.isAvailable = isAvailable;
+    }
+
+    if (Object.keys(updateFields).length === 0) {
+        return res.status(400).json({ message: 'No se proporcionaron campos para actualizar.' });
+    }
+
+    try {
+        const updatedAvailability = await Availability.findByIdAndUpdate(
+            id,
+            { $set: updateFields },
+            { new: true, runValidators: true }
+        );
+
+        if (!updatedAvailability) {
+            return res.status(404).json({ message: 'Disponibilidad no encontrada' });
+        }
+
+        res.json({
+            message: 'Disponibilidad actualizada exitosamente',
+            availability: updatedAvailability,
+        });
+    } catch (error) {
+        console.error('Error al actualizar disponibilidad:', error);
+        res.status(500).json({
+            message: 'Error al actualizar disponibilidad',
+            error: error.message,
+        });
+    }
+};
+
+const deleteAvailability = async (req, res) => {
   const { id } = req.params;
-
-  if (!roomId || !date || typeof isAvailable !== 'boolean') {
-    return res.status(400).json({ message: 'Datos incompletos o inválidos' });
-  }
-
-  if (!mongoose.Types.ObjectId.isValid(roomId)) {
-    return res.status(400).json({ message: 'ID de habitación inválido' });
-  }
-
-  if (isNaN(Date.parse(date))) {
-    return res.status(400).json({ message: 'Fecha inválida' });
-  }
-
-  // Validación del ID de disponibilidad (el 'id' de los params)
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    return res.status(400).json({ message: 'ID de disponibilidad inválido' });
-  }
-
   try {
-    const inputDate = new Date(date);
-    const dateToStore = new Date(Date.UTC(inputDate.getFullYear(), inputDate.getMonth(), inputDate.getDate()));
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'ID de disponibilidad inválido' });
+    }
 
-    const updatedAvailability = await Availability.findByIdAndUpdate(
-      id,
-      { roomId, date: dateToStore, isAvailable },
-      { new: true }
-    );
+    const deletedAvailability = await Availability.findByIdAndDelete(id);
 
-    if (!updatedAvailability) {
+    if (!deletedAvailability) {
       return res.status(404).json({ message: 'Disponibilidad no encontrada' });
     }
 
-    res.json({
-      message: 'Disponibilidad actualizada',
-      availability: updatedAvailability,
-    });
+    res.json({ message: 'Disponibilidad eliminada correctamente', deletedAvailability });
   } catch (error) {
-    console.error('Error al actualizar disponibilidad:', error);
+    console.error('Error al eliminar disponibilidad:', error);
     res.status(500).json({
-      message: 'Error al actualizar disponibilidad',
+      message: 'Error al eliminar disponibilidad',
       error: error.message,
     });
   }
 };
 
-const deleteAvailability = async (req, res) => {
-    const { id } = req.params;
-    try {
-        if (!mongoose.Types.ObjectId.isValid(id)) {
-            return res.status(400).json({ message: 'ID de disponibilidad inválido' });
-        }
-
-        const deletedAvailability = await Availability.findByIdAndDelete(id);
-        if (!deletedAvailability) {
-            return res.status(404).json({
-                message: 'Disponibilidad no encontrada',
-            });
-        }
-        res.json({
-            message: 'Disponibilidad eliminada',
-        });
-    } catch (error) {
-        console.error('Error al eliminar disponibilidad:', error);
-        res.status(500).json({
-            message: 'Error al eliminar disponibilidad',
-            error: error.message,
-        });
-    }
-};
 
 module.exports = { 
   setAvailability, 

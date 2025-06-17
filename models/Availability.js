@@ -19,4 +19,4 @@ const DisponibilidadSchema = new Schema({
 
 DisponibilidadSchema.index({ roomId: 1, date: 1 }, { unique: true });
 
-module.exports = model('Availability', DisponibilidadSchema, 'disponibilidad');
+module.exports = model('Availability', DisponibilidadSchema,'availabilities');

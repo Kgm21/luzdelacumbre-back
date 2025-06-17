@@ -33,7 +33,6 @@ router.post('/', [
   check('roomId').custom(isValidRoom),
   check('checkInDate', 'La fecha de entrada es obligatoria').isDate(),
   check('checkOutDate', 'La fecha de salida es obligatoria').isDate(),
-  check('totalPrice', 'El precio total debe ser un número positivo').isFloat({ min: 0 }),
   validateFields,
 ], createBooking);
 

@@ -1,6 +1,6 @@
 const { Schema, model } = require('mongoose');
 
-const ReservaSchema = Schema({
+const ReservaSchema = new Schema({
   userId: {
     type: Schema.Types.ObjectId,
     ref: 'User',
@@ -8,7 +8,7 @@ const ReservaSchema = Schema({
   },
   roomId: {
     type: Schema.Types.ObjectId,
-    ref: 'habitacion',
+    ref: 'Habitacion',
     required: [true, 'El ID de la habitación es obligatorio'],
   },
   checkInDate: {
@@ -18,6 +18,12 @@ const ReservaSchema = Schema({
   checkOutDate: {
     type: Date,
     required: [true, 'La fecha de salida es obligatoria'],
+    validate: {
+      validator: function(value) {
+        return value > this.checkInDate;
+      },
+      message: 'La fecha de salida debe ser posterior a la fecha de entrada',
+    }
   },
   totalPrice: {
     type: Number,
@@ -30,27 +36,16 @@ const ReservaSchema = Schema({
     enum: ['confirmed', 'cancelled', 'pending'],
     default: 'pending',
   },
-  createdAt: {
-    type: Date,
-    default: Date.now,
+  passengersCount: {
+    type: Number,
+    required: [true, 'La cantidad de pasajeros es obligatoria'],
+    min: [1, 'Debe haber al menos un pasajero'],
+    max: [6,'la cantidad de pasjeros de menor o igual que seis']
   },
-  updatedAt: {
-    type: Date,
-    default: Date.now,
-  },
-});
+}, { timestamps: true });
+
 
 ReservaSchema.index({ roomId: 1, checkInDate: 1, checkOutDate: 1 });
 ReservaSchema.index({ userId: 1 });
 
-ReservaSchema.pre('save', function (next) {
-  this.updatedAt = Date.now();
-  next();
-});
-
-ReservaSchema.pre('findOneAndUpdate', function (next) {
-  this.set({ updatedAt: Date.now() });
-  next();
-});
-
-module.exports = model('reserva', ReservaSchema);
+module.exports = model('Reserva', ReservaSchema, 'reservas');
