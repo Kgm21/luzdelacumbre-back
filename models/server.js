@@ -47,7 +47,7 @@ class Server {
     this.app.use(express.json());
 
     // Servir archivos estáticos
-    this.app.use(express.static('public'));
+    this.app.use('/api/images', express.static('public/images'));
   }
 
   routes() {
