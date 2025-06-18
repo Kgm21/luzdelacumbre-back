@@ -240,152 +240,187 @@ const getAvailabilityById = async (req, res) => {
 
     const availability = await Availability.findById(id).populate('roomId');
     if (!availability) {
-      return res.status(404).json({
-        message: 'Disponibilidad no encontrada',
-      });
+      return res.status(404).json({ message: 'Disponibilidad no encontrada' });
     }
-    res.json(availability);
+
+    return res.json(availability);
   } catch (error) {
-    res.status(500).json({
+    return res.status(500).json({
       message: 'Error al obtener disponibilidad',
       error: error.message,
     });
   }
 };
 
+
 // ** findAvailableRooms UNIFICADO Y CORREGIDO **
 const findAvailableRooms = async (req, res) => {
-    try {
-        const { roomId, startDate, endDate, guests } = req.query;
+  try {
+    const { startDate, endDate, guests, roomId } = req.query;
+    const MIN_NIGHTS = 5; // Igual que en createBooking
 
-        const queryDateRange = {};
-        let datesToCheck = [];
-        let minCapacity = null;
+    const queryDateRange = {};
+    let datesToCheck = [];
+    let minCapacity = null;
 
-        if (startDate && typeof startDate === 'string' && startDate.match(/^\d{4}-\d{2}-\d{2}$/) &&
-            endDate && typeof endDate === 'string' && endDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
-            
-            const start = new Date(Date.UTC(parseInt(startDate.substring(0,4)), parseInt(startDate.substring(5,7)) - 1, parseInt(startDate.substring(8,10)), 0, 0, 0, 0));
-            const end = new Date(Date.UTC(parseInt(endDate.substring(0,4)), parseInt(endDate.substring(5,7)) - 1, parseInt(endDate.substring(8,10)), 0, 0, 0, 0));
-            
-            if (start >= end) {
-                return res.status(400).json({ message: 'La fecha de inicio debe ser anterior a la fecha de fin.' });
-            }
+    // Validar fechas
+    if (
+      startDate &&
+      typeof startDate === 'string' &&
+      startDate.match(/^\d{4}-\d{2}-\d{2}$/) &&
+      endDate &&
+      typeof endDate === 'string' &&
+      endDate.match(/^\d{4}-\d{2}-\d{2}$/)
+    ) {
+      const start = new Date(
+        Date.UTC(
+          parseInt(startDate.substring(0, 4)),
+          parseInt(startDate.substring(5, 7)) - 1,
+          parseInt(startDate.substring(8, 10)),
+          0,
+          0,
+          0,
+          0
+        )
+      );
+      const end = new Date(
+        Date.UTC(
+          parseInt(endDate.substring(0, 4)),
+          parseInt(endDate.substring(5, 7)) - 1,
+          parseInt(endDate.substring(8, 10)),
+          0,
+          0,
+          0,
+          0
+        )
+      );
 
-            for (let d = new Date(start); d < end; d.setUTCDate(d.getUTCDate() + 1)) {
-                datesToCheck.push(new Date(d));
-            }
-            
-            if (datesToCheck.length === 0) {
-                 return res.status(400).json({ message: 'Rango de fechas inválido o sin días válidos.' });
-            }
+      if (isNaN(start) || isNaN(end)) {
+        return res.status(400).json({ message: 'Fechas inválidas' });
+      }
 
-            queryDateRange.$in = datesToCheck;
-            
-        } else if (startDate || endDate) {
-            return res.status(400).json({ message: 'Por favor, proporcione un rango de fechas válido (YYYY-MM-DD).' });
-        } else {
-            // Este bloque se ejecuta si no se proporcionan startDate ni endDate.
-            // Para 'available-rooms' normalmente esperas fechas.
-            // Si la ruta GET '/' también usa esta función sin fechas, se debe ajustar la lógica aquí.
-            return res.status(400).json({ message: 'Las fechas de inicio y fin son obligatorias para buscar habitaciones disponibles.' });
-        }
+      if (end <= start) {
+        return res.status(400).json({ message: 'La fecha de inicio debe ser anterior a la fecha de fin' });
+      }
 
-        if (guests) {
-            const parsedGuests = parseInt(guests);
-            if (isNaN(parsedGuests) || parsedGuests <= 0) {
-                return res.status(400).json({ message: 'Cantidad de pasajeros (guests) inválida. Debe ser un número positivo.' });
-            }
-            minCapacity = parsedGuests;
-        }
+      // Validar mínimo de noches
+      const nights = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+      if (nights < MIN_NIGHTS) {
+        return res.status(400).json({ message: `La búsqueda debe ser de al menos ${MIN_NIGHTS} noche(s)` });
+      }
 
-        const matchStage = {};
-        if (roomId && mongoose.Types.ObjectId.isValid(roomId)) {
-            const roomObjectId = new mongoose.Types.ObjectId(roomId);
-            const roomExists = await Room.exists({ _id: roomObjectId }); 
-            if (!roomExists) {
-                return res.status(404).json({ message: 'La habitación con ese ID no existe.' });
-            }
-            matchStage.roomId = roomObjectId;
-        } else if (roomId) {
-            return res.status(400).json({ message: 'ID de habitación inválido.' });
-        }
+      for (let d = new Date(start); d < end; d.setUTCDate(d.getUTCDate() + 1)) {
+        datesToCheck.push(new Date(d));
+      }
 
-        if (Object.keys(queryDateRange).length > 0) {
-            matchStage.date = queryDateRange;
-        }
+      if (datesToCheck.length === 0) {
+        return res.status(400).json({ message: 'Rango de fechas inválido o sin días válidos' });
+      }
 
-        const pipeline = [
-            { $match: matchStage },
-            {
-                $group: {
-                    _id: "$roomId",
-                    countDatesAvailable: { 
-                        $sum: { $cond: [{ $eq: ["$isAvailable", true] }, 1, 0] } 
-                    },
-                    totalDatesInQuery: { $sum: 1 }
-                }
-            },
-            {
-                $match: {
-                    $expr: {
-                        $and: [
-                            { $eq: ["$countDatesAvailable", datesToCheck.length] },
-                            { $eq: ["$totalDatesInQuery", datesToCheck.length] }
-                        ]
-                    }
-                }
-            },
-            {
-                $lookup: {
-                    from: 'habitacions',
-                    localField: '_id',
-                    foreignField: '_id',
-                    as: 'habitacion'
-                }
-            },
-            { $unwind: '$habitacion' },
-            { $match: { 'habitacion.isAvailable': true } }
-        ];
-
-        if (minCapacity !== null) {
-            pipeline.push({
-                $match: {
-                    'habitacion.capacity': { $gte: minCapacity }
-                }
-            });
-        }
-
-        pipeline.push({
-            $project: {
-                _id: "$_id",
-                roomNumber: "$habitacion.roomNumber",
-                type: "$habitacion.type",
-                price: "$habitacion.price",
-                capacity: "$habitacion.capacity",
-                imageUrls: "$habitacion.imageUrls",
-                description: "$habitacion.description"
-            }
-        });
-
-        const result = await Availability.aggregate(pipeline);
-
-        if (result.length === 0) {
-            return res.status(404).json({
-                message: 'No se encontraron disponibilidades para los criterios proporcionados',
-                criteria: { roomId, startDate, endDate, guests }
-            });
-        }
-
-        return res.json(result);
-
-    } catch (error) {
-        console.error('Error al obtener disponibilidad por rango y pasajeros:', error);
-        return res.status(500).json({
-            message: 'Error al obtener disponibilidad por rango y pasajeros',
-            error: error.message,
-        });
+      queryDateRange.$in = datesToCheck;
+    } else if (startDate || endDate) {
+      return res.status(400).json({ message: 'Por favor, proporcione un rango de fechas válido (YYYY-MM-DD)' });
+    } else {
+      return res.status(400).json({ message: 'Las fechas de inicio y fin son obligatorias para buscar habitaciones disponibles' });
     }
+
+    // Validar guests (passengersCount)
+    if (guests) {
+      const parsedGuests = parseInt(guests);
+      if (isNaN(parsedGuests) || parsedGuests < 1 || parsedGuests > 6) {
+        return res.status(400).json({ message: 'Cantidad de pasajeros inválida, debe estar entre 1 y 6' });
+      }
+      minCapacity = parsedGuests;
+    } else {
+      return res.status(400).json({ message: 'La cantidad de pasajeros es obligatoria' });
+    }
+
+    const matchStage = {};
+    if (roomId && mongoose.Types.ObjectId.isValid(roomId)) {
+      const roomObjectId = new mongoose.Types.ObjectId(roomId);
+      const roomExists = await Room.exists({ _id: roomObjectId });
+      if (!roomExists) {
+        return res.status(404).json({ message: 'La habitación con ese ID no existe' });
+      }
+      matchStage.roomId = roomObjectId;
+    } else if (roomId) {
+      return res.status(400).json({ message: 'ID de habitación inválido' });
+    }
+
+    if (Object.keys(queryDateRange).length > 0) {
+      matchStage.date = queryDateRange;
+    }
+
+    const pipeline = [
+      { $match: matchStage },
+      {
+        $group: {
+          _id: '$roomId',
+          countDatesAvailable: {
+            $sum: { $cond: [{ $eq: ['$isAvailable', true] }, 1, 0] },
+          },
+          totalDatesInQuery: { $sum: 1 },
+        },
+      },
+      {
+        $match: {
+          $expr: {
+            $and: [
+              { $eq: ['$countDatesAvailable', datesToCheck.length] },
+              { $eq: ['$totalDatesInQuery', datesToCheck.length] },
+            ],
+          },
+        },
+      },
+      {
+        $lookup: {
+          from: 'habitacions',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'habitacion',
+        },
+      },
+      { $unwind: '$habitacion' },
+      { $match: { 'habitacion.isAvailable': true } },
+    ];
+
+    if (minCapacity !== null) {
+      pipeline.push({
+        $match: {
+          'habitacion.capacity': { $gte: minCapacity },
+        },
+      });
+    }
+
+    pipeline.push({
+      $project: {
+        _id: '$_id',
+        roomNumber: '$habitacion.roomNumber',
+        type: '$habitacion.type',
+        price: '$habitacion.price',
+        capacity: '$habitacion.capacity',
+        imageUrls: '$habitacion.imageUrls',
+        description: '$habitacion.description',
+      },
+    });
+
+    const result = await Availability.aggregate(pipeline);
+
+    if (result.length === 0) {
+      return res.status(404).json({
+        message: 'No se encontraron disponibilidades para los criterios proporcionados',
+        criteria: { startDate, endDate, guests },
+      });
+    }
+
+    return res.json(result);
+  } catch (error) {
+    console.error('Error al obtener disponibilidad por rango y pasajeros:', error);
+    return res.status(500).json({
+      message: 'Error al obtener disponibilidad por rango y pasajeros',
+      error: error.message,
+    });
+  }
 };
 
 
