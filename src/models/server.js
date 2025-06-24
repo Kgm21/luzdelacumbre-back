@@ -13,6 +13,10 @@ class Server {
     this.bookingsPath = '/api/bookings';
     this.availabilityPath = '/api/availability';
 
+    this.contactPath = '/api/contact';
+
+    
+
     // Conectar con la base de datos
     this.conectarDB();
 
@@ -48,7 +52,7 @@ class Server {
     this.app.use(express.json());
 
     // Servir archivos estáticos
-    this.app.use('/api/images', express.static('public/images'));
+    this.app.use(express.static('public/images'));
   }
 
   routes() {
@@ -57,6 +61,9 @@ class Server {
     this.app.use(this.roomsPath, require('../routes/rooms'));
     this.app.use(this.bookingsPath, require('../routes/bookings'));
     this.app.use(this.availabilityPath, require('../routes/availability'));
+    // 💬 Nueva ruta de contacto
+    this.app.use(this.contactPath, require('../routes/contact'));
+
   }
 
   listen() {
