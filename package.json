@@ -29,7 +29,11 @@
     "express-validator": "^7.2.1",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.15.1",
+<<<<<<< HEAD
     "multer": "^2.0.1"
+=======
+    "nodemailer": "^7.0.3"
+>>>>>>> 01a36f96896a21cef66ec8a3c6bd68cf75c68022
   },
   "devDependencies": {
     "jest": "^30.0.0",
