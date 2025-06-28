@@ -37,7 +37,16 @@ const publishImages = async (req, res) => {
     res.status(500).json({ message: 'Error al publicar imágenes' });
   }
 };
-
+const listImages = async (req, res) => {
+  try {
+    const images = await Image.find({});
+    res.json(images);
+  } catch (error) {
+    console.error('Error al obtener imágenes:', error);
+    res.status(500).json({ message: 'Error al obtener imágenes' });
+  }
+};
 module.exports = {
   publishImages,
+   listImages,
 };
