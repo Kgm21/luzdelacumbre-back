@@ -5,6 +5,7 @@ const { dbConnection } = require('../database/config');
 
 class Server {
   constructor() {
+ 
     this.app = express();
     this.port = process.env.PORT || 3000;
     this.authPath = '/api/auth';
@@ -50,7 +51,8 @@ class Server {
 
   // Servir archivos estáticos
   this.app.use(express.static('public'));
-  this.app.use('/images', express.static(path.join(__dirname, '../public/images'))); // Corregido a 'images'
+  this.app.use(express.static(path.join(__dirname, '../public')));
+
 }
 
   routes() {
@@ -59,7 +61,7 @@ class Server {
     this.app.use(this.roomsPath, require('../routes/rooms'));
     this.app.use(this.bookingsPath, require('../routes/bookings'));
     this.app.use(this.availabilityPath, require('../routes/availability'));
-    this.app.use(this.imagesPath, require('../routes/images')); // Nueva ruta
+    this.app.use(this.imagesPath, require('../routes/images')); 
   }
 
   listen() {
