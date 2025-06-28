@@ -14,6 +14,10 @@ class Server {
     this.bookingsPath = '/api/bookings';
     this.availabilityPath = '/api/availability';
     this.imagesPath = '/api/images'; // Nueva ruta para imágenes
+    this.contactPath = '/api/contact';
+
+    
+    
 
     // Conectar con la base de datos
     this.conectarDB();
@@ -62,6 +66,11 @@ class Server {
     this.app.use(this.bookingsPath, require('../routes/bookings'));
     this.app.use(this.availabilityPath, require('../routes/availability'));
     this.app.use(this.imagesPath, require('../routes/images')); 
+    this.app.use(this.contactPath, require('../routes/contact'));
+    this.app.use(this.contactPath, require('../routes/contact'));
+    this.app.use(this.contactPath, require('../routes/contact'));
+    this.app.use(this.contactPath, require('../routes/contact'));
+this.app.use(this.contactPath, require('../routes/contact'));
   }
 
   listen() {

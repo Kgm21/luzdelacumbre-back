@@ -3,6 +3,6 @@ const router = Router();
 const { createContact, getContact } = require('../controllers/contactController');
 
 router.post('/', createContact);
-router.get('/', getContact)
+router.get('/', getContact);
 
 module.exports = router;
