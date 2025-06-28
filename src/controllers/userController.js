@@ -5,18 +5,23 @@ const mongoose = require('mongoose');
 
 
 const usuarioGet = async (req = request, res = response) => {
-  let { desde = 0, limite = 5 } = req.query;
+  let { desde = 0, limite = 50 } = req.query;
 
   desde = Number(desde);
   limite = Number(limite);
   if (isNaN(desde) || desde < 0) desde = 0;
-  if (isNaN(limite) || limite < 1) limite = 5;
+  if (isNaN(limite) || limite < 0) limite = 50;
 
-  const query = { isActive: true }; // ✅ campo correcto según el modelo
+  const query = { isActive: true };
+
+  const usuariosQuery = Usuario.find(query).skip(desde);
+  if (limite > 0) {
+    usuariosQuery.limit(limite);
+  }
 
   const [total, usuarios] = await Promise.all([
     Usuario.countDocuments(query),
-    Usuario.find(query).skip(desde).limit(limite)
+    usuariosQuery
   ]);
 
   res.json({
@@ -25,6 +30,7 @@ const usuarioGet = async (req = request, res = response) => {
     usuarios
   });
 };
+
 
 const usuarioGetID = async (req = request, res = response) => {
   try {
