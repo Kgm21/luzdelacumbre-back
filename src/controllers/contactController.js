@@ -18,7 +18,6 @@ const createContact = async (req, res) => {
 };
 
 
-
 const getContact = async (req, res) =>{
    try {
       const all = await Contact.find()
