@@ -14,6 +14,7 @@ class Server {
     this.bookingsPath = '/api/bookings';
     this.availabilityPath = '/api/availability';
     this.imagesPath = '/api/images'; // Nueva ruta para imágenes
+    this.contactPath ='api/contact'
 
 
 
