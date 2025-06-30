@@ -10,11 +10,11 @@ const {optionalAuth} = require('../middlewares/optionalAuth')
 
 const router = Router();
 
+
 // GET: Obtener todos los usuarios (solo administradores)
 router.get('/', [
   validateJWT,
-  isAdminRole,
-  validateFields,
+  isAdminRole
 ], usuarioGet);
 
 // GET: Obtener un usuario por ID

@@ -1,10 +1,11 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const { dbConnection } = require('../database/config');
-
 
 class Server {
   constructor() {
+ 
     this.app = express();
     this.port = process.env.PORT || 3000;
     this.authPath = '/api/auth';
@@ -12,9 +13,12 @@ class Server {
     this.roomsPath = '/api/rooms';
     this.bookingsPath = '/api/bookings';
     this.availabilityPath = '/api/availability';
+    this.imagesPath = '/api/images'; // Nueva ruta para imágenes
+    this.contactPath ='/api/contact'
 
-    this.contactPath = '/api/contact';
 
+
+    
     
 
     // Conectar con la base de datos
@@ -26,7 +30,7 @@ class Server {
     // Rutas
     this.routes();
 
-    // Manejo de errores 404 (movido aquí para ejecutarse después de las rutas)
+    // Manejo de errores 404
     this.app.use((req, res) => {
       res.status(404).json({
         message: 'Ruta no encontrada',
@@ -44,16 +48,18 @@ class Server {
     }
   }
 
-  middlewares() {
-    // CORS
-    this.app.use(cors());
+ middlewares() {
+  // CORS
+  this.app.use(cors());
 
-    // Parsear el cuerpo de las solicitudes en JSON
-    this.app.use(express.json());
+  // Parsear el cuerpo de las solicitudes en JSON
+  this.app.use(express.json());
 
-    // Servir archivos estáticos
-    this.app.use(express.static('public/images'));
-  }
+  // Servir archivos estáticos
+  this.app.use(express.static('public'));
+  this.app.use(express.static(path.join(__dirname, '../public')));
+
+}
 
   routes() {
     this.app.use(this.authPath, require('../routes/auth'));
@@ -61,8 +67,9 @@ class Server {
     this.app.use(this.roomsPath, require('../routes/rooms'));
     this.app.use(this.bookingsPath, require('../routes/bookings'));
     this.app.use(this.availabilityPath, require('../routes/availability'));
-    // 💬 Nueva ruta de contacto
+    this.app.use(this.imagesPath, require('../routes/images')); 
     this.app.use(this.contactPath, require('../routes/contact'));
+    
 
   }
 
