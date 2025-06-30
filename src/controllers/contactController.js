@@ -25,7 +25,7 @@ const createContact = async (req, res) => {
          html: `
       <p><strong>Nombre:</strong> ${name}</p>
       <p><strong>Email:</strong> ${email}</p>
-      <p><strong>Teléfono:</strong> ${phone}</p>
+      <p><strong>Teléfono:</strong> ${phone}</p>s
       <p><strong>Mensaje:</strong><br/>${message}</p>
       `,
       });
