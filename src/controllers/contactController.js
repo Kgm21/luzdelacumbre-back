@@ -19,7 +19,7 @@ const createContact = async (req, res) => {
       });
 
       await transporter.sendMail({
-         from: `"Luz de la Cumbre" `,
+         from: `"Luz de la Cumbre"`,
          to: process.env.EMAIL_USER,
          subject: 'Nuevo mensaje de contacto',
          html: `
