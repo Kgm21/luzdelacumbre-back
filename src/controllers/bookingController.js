@@ -150,11 +150,38 @@ async function regularizeBookings() {
 }
 
 // regularizeBookings();  // Solo llama esta función desde un script separado o un job para evitar problemas
-
 const getBookings = async (req, res) => {
   try {
-    const bookings = await Booking.find().populate('userId').populate('roomId');
-    res.json(bookings);
+    const { past } = req.query; // espera past=true o past=false
+    const pastNormalized = (past || '').toLowerCase();
+
+    // Fecha de hoy, sin hora para comparación solo por día
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    let filter = {};
+
+    if (pastNormalized === 'true') {
+      // Reservas que ya terminaron (checkOutDate < hoy)
+      filter.checkOutDate = { $lt: today };
+    } else if (pastNormalized === 'false') {
+      // Reservas activas (checkOutDate >= hoy)
+      filter.checkOutDate = { $gte: today };
+    }
+
+    const bookings = await Booking.find(filter)
+      .populate('userId')
+      .populate('roomId');
+
+    const formattedBookings = bookings.map(booking => ({
+      ...booking.toObject(),
+      id: booking._id.toString(),
+    }));
+
+    res.json({
+      data: formattedBookings,
+      total: formattedBookings.length,
+    });
   } catch (error) {
     res.status(500).json({
       message: 'Error al obtener las reservas',
@@ -163,6 +190,9 @@ const getBookings = async (req, res) => {
   }
 };
 
+
+
+
 const getBookingById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -170,7 +200,13 @@ const getBookingById = async (req, res) => {
     if (!booking) {
       return res.status(404).json({ message: 'Reserva no encontrada' });
     }
-    res.json(booking);
+
+    const formattedBooking = {
+      ...booking.toObject(),
+      id: booking._id.toString(),
+    };
+
+    res.json(formattedBooking);
   } catch (error) {
     res.status(500).json({
       message: 'Error al obtener la reserva',
@@ -179,13 +215,16 @@ const getBookingById = async (req, res) => {
   }
 };
 
+
 const updateBooking = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
+
   try {
     const { id } = req.params;
-    const { userId, roomId, checkInDate, checkOutDate, status, passengersCount } = req.body;
+    const { userId, roomId, checkInDate, checkOutDate, passengersCount } = req.body;
 
+    // Buscar reserva original
     const originalBooking = await Booking.findById(id).session(session);
     if (!originalBooking) {
       await session.abortTransaction();
@@ -193,39 +232,36 @@ const updateBooking = async (req, res) => {
       return res.status(404).json({ message: 'Reserva no encontrada' });
     }
 
-    const newRoomId = roomId || originalBooking.roomId;
-    const newCheckIn = checkInDate ? new Date(checkInDate) : originalBooking.checkInDate;
-    const newCheckOut = checkOutDate ? new Date(checkOutDate) : originalBooking.checkOutDate;
+    // Validaciones básicas
+    if (
+      passengersCount !== undefined &&
+      (typeof passengersCount !== 'number' ||
+        !Number.isInteger(passengersCount) ||
+        passengersCount < 1 ||
+        passengersCount > 6)
+    ) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({ message: 'Cantidad de pasajeros inválida (1-6)' });
+    }
 
-    if (isNaN(newCheckIn) || isNaN(newCheckOut) || newCheckOut <= newCheckIn) {
+    const start = checkInDate ? new Date(checkInDate) : originalBooking.checkInDate;
+    const end = checkOutDate ? new Date(checkOutDate) : originalBooking.checkOutDate;
+
+    if (isNaN(start) || isNaN(end) || end <= start) {
       await session.abortTransaction();
       session.endSession();
       return res.status(400).json({ message: 'Fechas inválidas o mal ordenadas' });
     }
 
-    const nights = Math.ceil((newCheckOut - newCheckIn) / (1000 * 60 * 60 * 24));
-    if (nights < 1) {
+    const nights = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+    if (nights < MIN_NIGHTS) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(400).json({ message: 'La reserva debe ser de al menos una noche' });
+      return res.status(400).json({ message: `La reserva debe ser de al menos ${MIN_NIGHTS} noche(s)` });
     }
 
-    let validPassengersCount = originalBooking.passengersCount;
-    if (passengersCount !== undefined) {
-      if (
-        typeof passengersCount !== 'number' ||
-        !Number.isInteger(passengersCount) ||
-        passengersCount < 1 ||
-        passengersCount > 6
-      ) {
-        await session.abortTransaction();
-        session.endSession();
-        return res.status(400).json({ message: 'Cantidad de pasajeros inválida, debe estar entre 1 y 6' });
-      } else {
-        validPassengersCount = passengersCount;
-      }
-    }
-
+    const newRoomId = roomId || originalBooking.roomId.toString();
     const room = await Room.findById(newRoomId);
     if (!room) {
       await session.abortTransaction();
@@ -233,42 +269,49 @@ const updateBooking = async (req, res) => {
       return res.status(404).json({ message: 'Habitación no encontrada' });
     }
 
-    if (validPassengersCount > room.capacity) {
+    const newPassengersCount = passengersCount !== undefined ? passengersCount : originalBooking.passengersCount;
+    if (newPassengersCount > room.capacity) {
       await session.abortTransaction();
       session.endSession();
       return res.status(400).json({
-        message: `La habitación tiene una capacidad máxima de ${room.capacity} personas`
+        message: `La habitación tiene una capacidad máxima de ${room.capacity} personas`,
       });
     }
 
-    const dates = [];
-    for (let d = new Date(newCheckIn); d < newCheckOut; d.setDate(d.getDate() + 1)) {
-      dates.push(new Date(d));
-    }
-
+    // Revisar si fechas o habitación cambiaron
     const datesChanged =
-      newRoomId.toString() !== originalBooking.roomId.toString() ||
-      newCheckIn.getTime() !== originalBooking.checkInDate.getTime() ||
-      newCheckOut.getTime() !== originalBooking.checkOutDate.getTime();
+      start.getTime() !== originalBooking.checkInDate.getTime() ||
+      end.getTime() !== originalBooking.checkOutDate.getTime() ||
+      newRoomId !== originalBooking.roomId.toString();
 
     if (datesChanged) {
-      const availability = await Availability.find({
+      // Crear array con todas las fechas nuevas
+      const newDates = [];
+      for (let d = new Date(start); d < end; d.setDate(d.getDate() + 1)) {
+        newDates.push(new Date(d));
+      }
+
+      // Verificar disponibilidad para las nuevas fechas y nueva habitación
+      const conflictingAvailability = await Availability.find({
         roomId: newRoomId,
-        date: { $in: dates },
-        isAvailable: true,
+        date: { $in: newDates },
+        isAvailable: false,
       }).session(session);
 
-      if (availability.length !== dates.length) {
+      // Aquí podrías filtrar para ignorar las fechas que ya tenía la reserva original
+      // para evitar falso positivo, pero por simplicidad abortamos si hay conflicto
+      if (conflictingAvailability.length > 0) {
         await session.abortTransaction();
         session.endSession();
         return res.status(409).json({ message: 'La habitación no está disponible en las nuevas fechas' });
       }
 
-      // Restaurar disponibilidad antigua
+      // Liberar fechas antiguas
       const oldDates = [];
       for (let d = new Date(originalBooking.checkInDate); d < originalBooking.checkOutDate; d.setDate(d.getDate() + 1)) {
         oldDates.push(new Date(d));
       }
+
       await Availability.updateMany(
         { roomId: originalBooking.roomId, date: { $in: oldDates } },
         { $set: { isAvailable: true } },
@@ -277,32 +320,31 @@ const updateBooking = async (req, res) => {
 
       // Bloquear nuevas fechas
       await Availability.updateMany(
-        { roomId: newRoomId, date: { $in: dates } },
+        { roomId: newRoomId, date: { $in: newDates } },
         { $set: { isAvailable: false } },
         { session }
       );
+
+      originalBooking.checkInDate = start;
+      originalBooking.checkOutDate = end;
+      originalBooking.roomId = newRoomId;
     }
 
-    const totalPrice = room.price * nights;
+    // Actualizar otros campos
+    originalBooking.passengersCount = newPassengersCount;
+    if (userId) {
+      originalBooking.userId = userId;
+    }
 
-    const updatedBooking = await Booking.findByIdAndUpdate(
-      id,
-      {
-        userId: userId || originalBooking.userId,
-        roomId: newRoomId,
-        checkInDate: newCheckIn,
-        checkOutDate: newCheckOut,
-        totalPrice,
-        status: status || originalBooking.status,
-        passengersCount: validPassengersCount,
-      },
-      { new: true, session }
-    );
+    // Recalcular precio total
+    originalBooking.totalPrice = room.price * Math.ceil((originalBooking.checkOutDate - originalBooking.checkInDate) / (1000 * 60 * 60 * 24));
+
+    await originalBooking.save({ session });
 
     await session.commitTransaction();
     session.endSession();
 
-    res.json({ message: 'Reserva actualizada', booking: updatedBooking });
+    res.json({ message: 'Reserva actualizada', booking: originalBooking });
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
@@ -310,6 +352,7 @@ const updateBooking = async (req, res) => {
     res.status(500).json({ message: 'Error al actualizar la reserva', error: error.message });
   }
 };
+
 
 const deleteBooking = async (req, res) => {
   const session = await mongoose.startSession();

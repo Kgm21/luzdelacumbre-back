@@ -92,7 +92,7 @@ const updateRoom = async (req, res) => {
     }
 
     if (type !== undefined) {
-      const validTypes = ['individual', 'doble', 'suite', 'familiar', 'deluxe'];
+      const validTypes = ['cabaña'];
       if (!validTypes.includes(type)) {
         return res.status(400).json({ message: 'Tipo de habitación no válido' });
       }
