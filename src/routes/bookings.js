@@ -27,12 +27,11 @@ router.get('/:id', [
 // POST: Crear una nueva reserva
 router.post('/', [
   validateJWT,
-  check('userId', 'El ID del usuario es obligatorio').isMongoId(),
-  check('userId').custom(isValidUser),
   check('roomId', 'El ID de la habitación es obligatorio').isMongoId(),
   check('roomId').custom(isValidRoom),
-  check('checkInDate', 'La fecha de entrada es obligatoria').isDate(),
-  check('checkOutDate', 'La fecha de salida es obligatoria').isDate(),
+  check('checkInDate', 'La fecha de entrada es obligatoria').notEmpty().isISO8601(),
+  check('checkOutDate', 'La fecha de salida es obligatoria').notEmpty().isISO8601(),
+  check('passengersCount', 'La cantidad de pasajeros es obligatoria').isInt({ min: 1 }),
   validateFields,
 ], createBooking);
 
