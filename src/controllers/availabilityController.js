@@ -6,63 +6,91 @@ const Reserva = require('../models/Booking')
 const initAvailability = async (req, res) => {
   try {
     const rooms = await Room.find();
+
     const startDate = new Date();
     const endDate = new Date();
     endDate.setMonth(endDate.getMonth() + 5);
+    startDate.setUTCHours(0, 0, 0, 0);
+    endDate.setUTCHours(0, 0, 0, 0);
 
-    // Obtener todas las disponibilidades existentes en el rango
-    const existingAvailabilities = await Availability.find({
-      date: { $gte: startDate, $lte: endDate }
+    // 1. Obtener reservas existentes en el rango
+    const bookings = await Booking.find({
+      checkIn: { $lte: endDate },
+      checkOut: { $gte: startDate }
     });
 
-    // Crear un mapa para saber cuáles fechas/rooms ya están en false
-    const unavailableMap = new Map();
-    existingAvailabilities.forEach(({ roomId, date, isAvailable }) => {
-      if (!isAvailable) {
-        const key = roomId.toString() + date.toISOString().slice(0,10);
-        unavailableMap.set(key, false);
+    // 2. Marcar como reservadas cada fecha entre checkIn y checkOut por room
+    const reservedMap = new Map();
+    for (const { roomId, checkIn, checkOut } of bookings) {
+      let current = new Date(checkIn);
+      current.setUTCHours(0, 0, 0, 0);
+      const end = new Date(checkOut);
+      end.setUTCHours(0, 0, 0, 0);
+
+      while (current <= end) {
+        const key = `${roomId.toString()}-${current.toISOString().slice(0, 10)}`;
+        reservedMap.set(key, true);
+        current.setDate(current.getDate() + 1);
       }
+    }
+
+    // 3. Obtener todas las disponibilidades existentes (solo las que ya están en false)
+    const existingAvailabilities = await Availability.find({
+      date: { $gte: startDate, $lte: endDate },
+      isAvailable: false
     });
 
-    const availabilitiesToInsert = [];
+    const unavailableMap = new Map();
+    for (const { roomId, date } of existingAvailabilities) {
+      const d = new Date(date);
+      d.setUTCHours(0, 0, 0, 0);
+      const key = `${roomId.toString()}-${d.toISOString().slice(0, 10)}`;
+      unavailableMap.set(key, true);
+    }
+
+    // 4. Preparar operaciones
+    const bulkOps = [];
 
     for (const room of rooms) {
       let currentDate = new Date(startDate);
-      
+
       while (currentDate <= endDate) {
-        const dateToStore = new Date(Date.UTC(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate()));
-        const key = room._id.toString() + dateToStore.toISOString().slice(0,10);
+        const dateToStore = new Date(Date.UTC(
+          currentDate.getFullYear(),
+          currentDate.getMonth(),
+          currentDate.getDate()
+        ));
 
-        // Solo setear isAvailable true si no está marcado false
-        const isAvailable = unavailableMap.has(key) ? false : true;
+        const key = `${room._id.toString()}-${dateToStore.toISOString().slice(0, 10)}`;
 
-        availabilitiesToInsert.push({
-          roomId: room._id,
-          date: dateToStore,
-          isAvailable,
+        // No disponible si está reservado o ya marcado como no disponible
+        const isAvailable = reservedMap.has(key) || unavailableMap.has(key) ? false : true;
+
+        bulkOps.push({
+          updateOne: {
+            filter: { roomId: room._id, date: dateToStore },
+            update: { $set: { isAvailable } },
+            upsert: true
+          }
         });
 
         currentDate.setDate(currentDate.getDate() + 1);
       }
     }
 
-    const bulkOps = availabilitiesToInsert.map(({ roomId, date, isAvailable }) => ({
-      updateOne: {
-        filter: { roomId, date },
-        update: { $set: { isAvailable } },
-        upsert: true
-      }
-    }));
+    if (bulkOps.length === 0) {
+      return res.json({ message: 'No hay disponibilidad para actualizar' });
+    }
 
-    await Availability.bulkWrite(bulkOps);
-    
+    const result = await Availability.bulkWrite(bulkOps, { ordered: false });
+    res.json({ message: 'Disponibilidad inicializada respetando reservas y bloqueos', result });
 
-    res.json({ message: 'Disponibilidad inicializada, respetando reservas existentes' });
   } catch (error) {
     console.error('Error al inicializar disponibilidad:', error);
     res.status(500).json({ message: 'Error al inicializar disponibilidad', error: error.message });
   }
 };
+
 
 
 const setAvailability = async (req, res) => {

@@ -152,7 +152,7 @@ async function regularizeBookings() {
 // regularizeBookings();  // Solo llama esta función desde un script separado o un job para evitar problemas
 const getBookings = async (req, res) => {
   try {
-    const { past } = req.query; // espera past=true o past=false
+    const { past } = req.query; 
     const pastNormalized = (past || '').toLowerCase();
 
     // Fecha de hoy, sin hora para comparación solo por día
@@ -222,7 +222,7 @@ const updateBooking = async (req, res) => {
 
   try {
     const { id } = req.params;
-    const { userId, roomId, checkInDate, checkOutDate, passengersCount } = req.body;
+    const { userId, roomId, checkInDate, checkOutDate, passengersCount, status } = req.body;
 
     // Buscar reserva original
     const originalBooking = await Booking.findById(id).session(session);
@@ -262,7 +262,7 @@ const updateBooking = async (req, res) => {
     }
 
     const newRoomId = roomId || originalBooking.roomId.toString();
-    const room = await Room.findById(newRoomId);
+    const room = await Room.findById(newRoomId).session(session);
     if (!room) {
       await session.abortTransaction();
       session.endSession();
@@ -288,35 +288,49 @@ const updateBooking = async (req, res) => {
       // Crear array con todas las fechas nuevas
       const newDates = [];
       for (let d = new Date(start); d < end; d.setDate(d.getDate() + 1)) {
-        newDates.push(new Date(d));
+        newDates.push(new Date(d.getTime()));
       }
 
       // Verificar disponibilidad para las nuevas fechas y nueva habitación
+      // Excluir la reserva actual para evitar falsos conflictos
       const conflictingAvailability = await Availability.find({
         roomId: newRoomId,
         date: { $in: newDates },
         isAvailable: false,
       }).session(session);
 
-      // Aquí podrías filtrar para ignorar las fechas que ya tenía la reserva original
-      // para evitar falso positivo, pero por simplicidad abortamos si hay conflicto
-      if (conflictingAvailability.length > 0) {
+      // Filtrar fechas ocupadas que no correspondan a la reserva actual
+      const conflictingDates = conflictingAvailability.filter((avail) => {
+        return !originalBooking.checkInDate ||
+          !originalBooking.checkOutDate ||
+          newRoomId !== originalBooking.roomId.toString() ||
+          avail.date < originalBooking.checkInDate ||
+          avail.date >= originalBooking.checkOutDate;
+      });
+
+      if (conflictingDates.length > 0) {
         await session.abortTransaction();
         session.endSession();
         return res.status(409).json({ message: 'La habitación no está disponible en las nuevas fechas' });
       }
 
-      // Liberar fechas antiguas
-      const oldDates = [];
-      for (let d = new Date(originalBooking.checkInDate); d < originalBooking.checkOutDate; d.setDate(d.getDate() + 1)) {
-        oldDates.push(new Date(d));
-      }
+      // Liberar fechas antiguas si la habitación o fechas cambiaron
+      if (
+        newRoomId !== originalBooking.roomId.toString() ||
+        start.getTime() !== originalBooking.checkInDate.getTime() ||
+        end.getTime() !== originalBooking.checkOutDate.getTime()
+      ) {
+        const oldDates = [];
+        for (let d = new Date(originalBooking.checkInDate); d < originalBooking.checkOutDate; d.setDate(d.getDate() + 1)) {
+          oldDates.push(new Date(d.getTime()));
+        }
 
-      await Availability.updateMany(
-        { roomId: originalBooking.roomId, date: { $in: oldDates } },
-        { $set: { isAvailable: true } },
-        { session }
-      );
+        await Availability.updateMany(
+          { roomId: originalBooking.roomId, date: { $in: oldDates } },
+          { $set: { isAvailable: true } },
+          { session }
+        );
+      }
 
       // Bloquear nuevas fechas
       await Availability.updateMany(
@@ -332,23 +346,34 @@ const updateBooking = async (req, res) => {
 
     // Actualizar otros campos
     originalBooking.passengersCount = newPassengersCount;
-    if (userId) {
-      originalBooking.userId = userId;
-    }
+    if (userId) originalBooking.userId = userId;
+    if (status) originalBooking.status = status;
 
     // Recalcular precio total
-    originalBooking.totalPrice = room.price * Math.ceil((originalBooking.checkOutDate - originalBooking.checkInDate) / (1000 * 60 * 60 * 24));
+    originalBooking.totalPrice = room.price * nights;
 
     await originalBooking.save({ session });
+
+    // Poblar userId y roomId para devolver datos completos
+    const populatedBooking = await Booking.findById(id)
+      .populate('userId')
+      .populate('roomId')
+      .session(session);
 
     await session.commitTransaction();
     session.endSession();
 
-    res.json({ message: 'Reserva actualizada', booking: originalBooking });
+    res.json({
+      message: 'Reserva actualizada',
+      booking: {
+        ...populatedBooking.toObject(),
+        id: populatedBooking._id.toString(),
+      },
+    });
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
-    console.error(error);
+    console.error('Error al actualizar la reserva:', error);
     res.status(500).json({ message: 'Error al actualizar la reserva', error: error.message });
   }
 };
