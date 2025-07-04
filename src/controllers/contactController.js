@@ -9,10 +9,28 @@ const createContact = async (req, res) => {
       console.log(newContact)
       await newContact.save();
 
-      
+      // Enviar email
+      const transporter = nodemailer.createTransport({
+         service: 'gmail',
+         auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS,
+         },
+      });
 
-      
-      res.status(201).json({ message: 'Mensaje guardado ' });
+      await transporter.sendMail({
+         from: `"Luz de la Cumbre"`,
+         to: process.env.EMAIL_USER,
+         subject: 'Nuevo mensaje de contacto',
+         html: `
+      <p><strong>Nombre:</strong> ${name}</p>
+      <p><strong>Email:</strong> ${email}</p>
+      <p><strong>Teléfono:</strong> ${phone}</p>s
+      <p><strong>Mensaje:</strong><br/>${message}</p>
+      `,
+      });
+
+      res.status(201).json({ message: 'Mensaje guardado y enviado por correo' });
    } catch (error) {
       console.error(error);
       res.status(500).json({ message: 'Error al guardar o enviar el mensaje' });

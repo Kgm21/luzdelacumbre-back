@@ -10,7 +10,8 @@ const createBooking = async (req, res) => {
   session.startTransaction();
 
   try {
-    const { userId, roomId, checkInDate, checkOutDate, passengersCount } = req.body;
+    const { roomId, checkInDate, checkOutDate, passengersCount } = req.body;
+    const userId = req.user.id;
 
     // Validación básica
     if (
@@ -28,8 +29,10 @@ const createBooking = async (req, res) => {
       return res.status(400).json({ message: 'Datos incompletos o inválidos, incluyendo cantidad de pasajeros (1-6)' });
     }
 
-    const start = new Date(checkInDate);
-    const end = new Date(checkOutDate);
+    const startRaw = new Date(checkInDate);
+    const endRaw = new Date(checkOutDate);
+    const start = new Date(Date.UTC(startRaw.getUTCFullYear(), startRaw.getUTCMonth(), startRaw.getUTCDate()));
+    const end = new Date(Date.UTC(endRaw.getUTCFullYear(), endRaw.getUTCMonth(), endRaw.getUTCDate()));
 
     if (isNaN(start) || isNaN(end) || end <= start) {
       await session.abortTransaction();
@@ -43,6 +46,8 @@ const createBooking = async (req, res) => {
       session.endSession();
       return res.status(400).json({ message: `La reserva debe ser de al menos ${MIN_NIGHTS} noche(s)` });
     }
+
+    
 
     const room = await Room.findById(roomId);
     if (!room) {
@@ -61,11 +66,12 @@ const createBooking = async (req, res) => {
 
     const totalPrice = room.price * nights;
 
-    // Crear array con todas las fechas de la reserva
-    const dates = [];
-    for (let d = new Date(start); d < end; d.setDate(d.getDate() + 1)) {
-      dates.push(new Date(d));
+     const dates = [];
+    for (let d = new Date(start); d < end; d.setUTCDate(d.getUTCDate() + 1)) {
+      dates.push(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())));
     }
+    
+   
 
     // Verificar disponibilidad
     const availability = await Availability.find({
