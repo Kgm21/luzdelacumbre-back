@@ -15,8 +15,10 @@ const DisponibilidadSchema = new Schema({
     required: true,
     default: true,
   },
+}, {
+  timestamps: true  // crea createdAt y updatedAt automáticamente
 });
 
 DisponibilidadSchema.index({ roomId: 1, date: 1 }, { unique: true });
 
-module.exports = model('Availability', DisponibilidadSchema,'availabilities');
+module.exports = model('Availability', DisponibilidadSchema, 'availabilities');

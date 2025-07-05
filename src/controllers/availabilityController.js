@@ -12,12 +12,12 @@ const initAvailability = async (req, res) => {
     console.log(`Se encontraron ${rooms.length} habitaciones`);
 
     const startDate = new Date();
-    const endDate   = new Date();
-    endDate.setMonth(endDate.getMonth() + 5);
     startDate.setUTCHours(0,0,0,0);
+    const endDate = new Date();
+    endDate.setMonth(endDate.getMonth() + 5);
     endDate.setUTCHours(0,0,0,0);
 
-    // 1. Obtener reservas en el rango usando los campos correctos
+    // 1. Obtener reservas en el rango
     const bookings = await Reserva.find({
       checkInDate:  { $lte: endDate },
       checkOutDate: { $gte: startDate }
@@ -31,57 +31,55 @@ const initAvailability = async (req, res) => {
       current.setUTCHours(0,0,0,0);
       const end = new Date(checkOutDate);
       end.setUTCHours(0,0,0,0);
-
       while (current <= end) {
-        const key = `${roomId}-${current.toISOString().slice(0,10)}`;
-        reservedMap.set(key, true);
+        reservedMap.set(`${roomId}-${current.toISOString().slice(0,10)}`, true);
         current.setDate(current.getDate() + 1);
       }
     }
-    console.log(`reservedMap tiene ${reservedMap.size} entradas`);
+    console.log(`reservedMap size: ${reservedMap.size}`);
 
     // 3. Obtener bloqueos previos
     const existingAvail = await Availability.find({
       date:        { $gte: startDate, $lte: endDate },
       isAvailable: false
     });
-    console.log(`Se encontraron ${existingAvail.length} bloqueos previos`);
-
+    console.log(`Bloqueos previos: ${existingAvail.length}`);
     const unavailableMap = new Map();
     for (const { roomId, date } of existingAvail) {
       const d = new Date(date);
       d.setUTCHours(0,0,0,0);
-      const key = `${roomId}-${d.toISOString().slice(0,10)}`;
-      unavailableMap.set(key, true);
+      unavailableMap.set(`${roomId}-${d.toISOString().slice(0,10)}`, true);
     }
-    console.log(`unavailableMap tiene ${unavailableMap.size} entradas`);
 
-    // 4. Preparar bulkOps
+    // 4. Preparar bulkOps con $currentDate para updatedAt
     const bulkOps = [];
     for (const room of rooms) {
       let currentDate = new Date(startDate);
       while (currentDate <= endDate) {
         const dateToStore = new Date(Date.UTC(
-          currentDate.getFullYear(),
-          currentDate.getMonth(),
-          currentDate.getDate()
+          currentDate.getUTCFullYear(),
+          currentDate.getUTCMonth(),
+          currentDate.getUTCDate()
         ));
         const key = `${room._id}-${dateToStore.toISOString().slice(0,10)}`;
-        const isAvailable = !(reservedMap.has(key) || unavailableMap.has(key));
+        const isAvailable = !reservedMap.has(key) && !unavailableMap.has(key);
+
         bulkOps.push({
           updateOne: {
             filter: { roomId: room._id, date: dateToStore },
-            update: { $set: { isAvailable } },
+            update: {
+              $set: { isAvailable },
+              $currentDate: { updatedAt: true }  // ← fuerza actualización de updatedAt
+            },
             upsert: true
           }
         });
-        currentDate.setDate(currentDate.getDate() + 1);
+
+        currentDate.setUTCDate(currentDate.getUTCDate() + 1);
       }
     }
 
-    console.log('Cantidad de operaciones bulk:', bulkOps.length);
-    console.log('Primeras 3 operaciones:', bulkOps.slice(0,3));
-
+    console.log('bulkOps count:', bulkOps.length);
     if (bulkOps.length === 0) {
       return res.json({ message: 'No hay disponibilidad para actualizar' });
     }
