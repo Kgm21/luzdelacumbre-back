@@ -1,5 +1,7 @@
 const mongoose = require('mongoose');
 const Room = require('../models/Room');
+const Booking = require('../models/Booking')
+const Availability = require('../models/Availability')
 
 const createRoom = async (req, res) => {
   try {
@@ -128,7 +130,7 @@ const getRoomById = async (req, res) => {
 const updateRoom = async (req, res) => {
   try {
     const { id } = req.params;
-    const { roomNumber, type, price, description, imageUrls, capacity } = req.body;
+    const { roomNumber, type, price, description, imageUrls, capacity, isAvailable } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ message: 'ID inválido' });
@@ -144,7 +146,7 @@ const updateRoom = async (req, res) => {
     }
 
     if (type !== undefined) {
-      const validTypes = ['cabaña'];
+      const validTypes = ['cabana'];
       if (!validTypes.includes(type)) {
         return res.status(400).json({ message: 'Tipo de habitación no válido' });
       }
@@ -179,8 +181,22 @@ const updateRoom = async (req, res) => {
       fieldsToUpdate.capacity = capacity;
     }
 
+    if (isAvailable !== undefined) {
+      if (typeof isAvailable !== 'boolean') {
+        return res.status(400).json({ message: 'isAvailable debe ser booleano' });
+      }
+      fieldsToUpdate.isAvailable = isAvailable;
+    }
+
     if (Object.keys(fieldsToUpdate).length === 0) {
       return res.status(400).json({ message: 'No se proporcionaron campos válidos para actualizar' });
+    }
+
+    if (fieldsToUpdate.roomNumber) {
+      const roomWithSameNumber = await Room.findOne({ roomNumber: fieldsToUpdate.roomNumber });
+      if (roomWithSameNumber && roomWithSameNumber._id.toString() !== id) {
+        return res.status(400).json({ message: 'El número de habitación ya está registrado' });
+      }
     }
 
     const updatedRoom = await Room.findByIdAndUpdate(id, fieldsToUpdate, { new: true });
@@ -243,7 +259,7 @@ const deleteRoom = async (req, res) => {
     );
 
     // Marcar la habitación como no disponible
-    room.isAvailable = false;
+    room.isAvailable = !room.isAvailable;
     await room.save({ session });
 
     await session.commitTransaction();

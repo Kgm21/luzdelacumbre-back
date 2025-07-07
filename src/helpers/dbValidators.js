@@ -13,8 +13,8 @@ const isValidUser = async (id) => {
 
 const isValidRoom = async (id) => {
   const room = await Room.findById(id);
-  if (!room || !room.isAvailable) {
-    throw new Error(`La habitación con ID ${id} no existe o no está disponible`);
+  if (!room) {
+    throw new Error(`La habitación con ID ${id} no existe`);
   }
 };
 
@@ -32,11 +32,15 @@ const isValidEmail = async (email) => {
   }
 };
 
-const isValidRoomNumber = async (roomNumber) => {
-  const room = await Room.findOne({ roomNumber });
-  if (room) {
+const isValidRoomNumber = async (roomNumber, { req }) => {
+  const roomId = req.params.id;
+  const existingRoom = await Room.findOne({ roomNumber });
+
+   if (existingRoom && existingRoom._id.toString() !== roomId) {
     throw new Error(`El número de habitación ${roomNumber} ya está registrado`);
   }
+
+  return true;
 };
 
 module.exports = {
