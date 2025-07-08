@@ -6,8 +6,8 @@ const mongoose = require('mongoose');
 
 const isValidUser = async (id) => {
   const user = await User.findById(id);
-  if (!user || !user.isActive) {
-    throw new Error(`El usuario con ID ${id} no existe o está inactivo`);
+  if (!user) {
+    throw new Error(`El usuario con ID ${id} no existe`);
   }
 };
 

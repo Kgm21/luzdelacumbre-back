@@ -130,11 +130,21 @@ const getRoomById = async (req, res) => {
 const updateRoom = async (req, res) => {
   try {
     const { id } = req.params;
-    const { roomNumber, type, price, description, imageUrls, capacity, isAvailable } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ message: 'ID inválido' });
     }
+
+    // ⚠️ Como los datos llegan como string (por FormData), parseamos
+    const roomNumber = req.body.roomNumber;
+    const type = req.body.type;
+    const price = req.body.price ? parseFloat(req.body.price) : undefined;
+    const description = req.body.description;
+    const capacity = req.body.capacity ? parseInt(req.body.capacity) : undefined;
+    const isAvailable =
+      req.body.isAvailable !== undefined
+        ? req.body.isAvailable === 'true' || req.body.isAvailable === true
+        : undefined;
 
     const fieldsToUpdate = {};
 
@@ -146,7 +156,7 @@ const updateRoom = async (req, res) => {
     }
 
     if (type !== undefined) {
-      const validTypes = ['cabana'];
+      const validTypes = ['cabana', 'individual', 'doble', 'suite', 'familiar', 'deluxe'];
       if (!validTypes.includes(type)) {
         return res.status(400).json({ message: 'Tipo de habitación no válido' });
       }
@@ -167,13 +177,6 @@ const updateRoom = async (req, res) => {
       fieldsToUpdate.description = description.trim();
     }
 
-    if (imageUrls !== undefined) {
-      if (!Array.isArray(imageUrls) || !imageUrls.every(url => typeof url === 'string')) {
-        return res.status(400).json({ message: 'imageUrls debe ser un arreglo de strings' });
-      }
-      fieldsToUpdate.imageUrls = imageUrls;
-    }
-
     if (capacity !== undefined) {
       if (typeof capacity !== 'number' || isNaN(capacity) || capacity < 1) {
         return res.status(400).json({ message: 'Capacidad inválida' });
@@ -192,6 +195,7 @@ const updateRoom = async (req, res) => {
       return res.status(400).json({ message: 'No se proporcionaron campos válidos para actualizar' });
     }
 
+    // Verificar que el número de habitación no exista en otra habitación
     if (fieldsToUpdate.roomNumber) {
       const roomWithSameNumber = await Room.findOne({ roomNumber: fieldsToUpdate.roomNumber });
       if (roomWithSameNumber && roomWithSameNumber._id.toString() !== id) {
@@ -199,6 +203,7 @@ const updateRoom = async (req, res) => {
       }
     }
 
+    // Actualizar habitación
     const updatedRoom = await Room.findByIdAndUpdate(id, fieldsToUpdate, { new: true });
 
     if (!updatedRoom) {
@@ -216,6 +221,7 @@ const updateRoom = async (req, res) => {
     res.status(500).json({ message: 'Error al actualizar la habitación', error: error.message });
   }
 };
+
 
 const deleteRoom = async (req, res) => {
   const session = await mongoose.startSession();

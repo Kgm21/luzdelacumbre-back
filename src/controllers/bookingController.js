@@ -2,24 +2,40 @@ const Booking = require('../models/Booking');
 const Availability = require('../models/Availability');
 const mongoose = require('mongoose');
 const Room = require('../models/Room');
+const User = require('../models/user')
 
-const MIN_NIGHTS = 5;  
+const MIN_NIGHTS = 5;
 
 const createBooking = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
-    const { roomId, checkInDate, checkOutDate, passengersCount } = req.body;
-    const userId = req.user.id;
+    let { roomId, checkInDate, checkOutDate, passengersCount, userId: userIdFromBody } = req.body;
 
-    // Validación básica
+    // Convertir passengersCount a número
+    passengersCount = Number(passengersCount);
+
+    // Determinar userId final según rol
+    let userId;
+
+    if (req.user.role === 'admin') {
+      if (!userIdFromBody) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(400).json({ message: 'El administrador debe especificar un usuario para la reserva' });
+      }
+      userId = userIdFromBody.toString();
+    } else {
+      userId = req.user._id.toString();
+    }
+
+    // Validación básica de datos
     if (
       !userId ||
       !roomId ||
       !checkInDate ||
       !checkOutDate ||
-      typeof passengersCount !== 'number' ||
       !Number.isInteger(passengersCount) ||
       passengersCount < 1 ||
       passengersCount > 6
@@ -29,6 +45,15 @@ const createBooking = async (req, res) => {
       return res.status(400).json({ message: 'Datos incompletos o inválidos, incluyendo cantidad de pasajeros (1-6)' });
     }
 
+    // Validar que el usuario exista
+    const userExists = await User.findById(userId);
+    if (!userExists) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(404).json({ message: 'Usuario no encontrado' });
+    }
+
+    // Validar fechas
     const startRaw = new Date(checkInDate);
     const endRaw = new Date(checkOutDate);
     const start = new Date(Date.UTC(startRaw.getUTCFullYear(), startRaw.getUTCMonth(), startRaw.getUTCDate()));
@@ -40,6 +65,11 @@ const createBooking = async (req, res) => {
       return res.status(400).json({ message: 'Fechas inválidas o mal ordenadas' });
     }
 
+    // Validar duración mínima (MIN_NIGHTS debe estar definido)
+    if (typeof MIN_NIGHTS !== "number") {
+      // definir un valor por defecto
+      MIN_NIGHTS = 1;
+    }
     const nights = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
     if (nights < MIN_NIGHTS) {
       await session.abortTransaction();
@@ -47,8 +77,7 @@ const createBooking = async (req, res) => {
       return res.status(400).json({ message: `La reserva debe ser de al menos ${MIN_NIGHTS} noche(s)` });
     }
 
-    
-
+    // Buscar habitación y validar capacidad
     const room = await Room.findById(roomId);
     if (!room) {
       await session.abortTransaction();
@@ -66,12 +95,11 @@ const createBooking = async (req, res) => {
 
     const totalPrice = room.price * nights;
 
-     const dates = [];
+    // Generar array de fechas
+    const dates = [];
     for (let d = new Date(start); d < end; d.setUTCDate(d.getUTCDate() + 1)) {
       dates.push(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())));
     }
-    
-   
 
     // Verificar disponibilidad
     const availability = await Availability.find({
@@ -86,6 +114,7 @@ const createBooking = async (req, res) => {
       return res.status(409).json({ message: 'La habitación no está disponible en las fechas solicitadas' });
     }
 
+    // Crear reserva
     const newBooking = new Booking({
       userId,
       roomId,
@@ -117,6 +146,7 @@ const createBooking = async (req, res) => {
     return res.status(500).json({ message: 'Error al crear la reserva', error: error.message });
   }
 };
+
 
 async function regularizeBookings() {
   try {
@@ -158,7 +188,7 @@ async function regularizeBookings() {
 // regularizeBookings();  // Solo llama esta función desde un script separado o un job para evitar problemas
 const getBookings = async (req, res) => {
   try {
-    const { past } = req.query; 
+    const { past } = req.query;
     const pastNormalized = (past || '').toLowerCase();
 
     // Fecha de hoy, sin hora para comparación solo por día

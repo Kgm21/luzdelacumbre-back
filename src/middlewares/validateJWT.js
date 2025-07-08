@@ -17,7 +17,7 @@ const validateJWT = async (req, res, next) => {
     }
 
     req.user = {
-      id: usuario.id,
+      _id: usuario._id,
       role: usuario.role,
       name: usuario.name,
       email: usuario.email

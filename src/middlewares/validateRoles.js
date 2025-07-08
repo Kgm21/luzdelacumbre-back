@@ -2,7 +2,7 @@ const User = require('../models/user');
 
 const isAdminRole = async (req, res, next) => {
   try {
-    const user = await User.findById(req.user.id); // Usa req.usuario._id
+    const user = await User.findById(req.user._id); // Usa req.usuario._id
     if (!user) {
       return res.status(404).json({
         message: 'Usuario no encontrado',

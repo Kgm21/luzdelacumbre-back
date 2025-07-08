@@ -12,7 +12,7 @@ const usuarioGet = async (req = request, res = response) => {
   if (isNaN(desde) || desde < 0) desde = 0;
   if (isNaN(limite) || limite < 0) limite = 50;
 
-  const query = { isActive: true };
+  const query = { };
 
   const usuariosQuery = Usuario.find(query).skip(desde);
   if (limite > 0) {
@@ -45,9 +45,9 @@ const usuarioGetID = async (req = request, res = response) => {
 
     const usuario = await Usuario.findById(id);
 
-    if (!usuario || !usuario.isActive) {
+    if (!usuario ) {
       return res.status(404).json({
-        mensaje: "Usuario no encontrado o inactivo"
+        mensaje: "Usuario no encontrado"
       });
     }
 
@@ -141,12 +141,12 @@ const usuarioPut = async (req = request, res = response) => {
   const { password, google, _id, role, ...resto } = req.body;
 
   // Solo el admin puede modificar el rol
-  if (req.usuario._id.toString() !== id && req.usuario.role !== 'admin') {
+  if (req.user._id.toString() !== id && req.user.role !== 'admin') {
     return res.status(403).json({ mensaje: 'No tienes permiso para actualizar este perfil' });
   }
 
   // Si no es admin, eliminar cualquier intento de modificar el rol
-  if (req.usuario.role !== 'admin') {
+  if (req.user.role !== 'admin') {
     delete resto.role;
   } else {
     // Si es admin, permitimos cambiar el rol si lo envía
@@ -186,23 +186,17 @@ const usuarioDelete = async (req = request, res = response) => {
     }
 
   
-    if (!usuario.isActive) {
-      return res.status(400).json({
-        mensaje: "El usuario ya está inhabilitado"
-      });
-    }
-
- 
-    const usuarioInhabilitado = await Usuario.findByIdAndUpdate(id, { isActive: false }, { new: true });
+     usuario.isActive = !usuario.isActive;
+    await usuario.save();
 
     res.json({
-      mensaje: "Usuario inhabilitado correctamente",
-      usuario: usuarioInhabilitado
+      mensaje: `Usuario ${usuario.isActive ? "activado" : "inhabilitado"} correctamente`,
+      usuario: usuario
     });
 
   } catch (error) {
     res.status(500).json({
-      mensaje: "Error al inhabilitar el usuario",
+      mensaje: "Error al cambiar el estado del usuario",
       error: error.message
     });
   }
