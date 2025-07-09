@@ -58,6 +58,8 @@ class Server {
   // Servir archivos estáticos
   this.app.use(express.static('public'));
   this.app.use(express.static(path.join(__dirname, '../public')));
+  this.app.use('/images', express.static(path.join(__dirname, '../public/images')));
+
 
 }
 

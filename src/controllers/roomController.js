@@ -5,48 +5,31 @@ const Availability = require('../models/Availability')
 
 const createRoom = async (req, res) => {
   try {
-    const { roomNumber, price, description, imageUrls, capacity } = req.body;
+    const { roomNumber, type, price, description, capacity, isAvailable } = req.body;
 
-    if (!roomNumber || typeof roomNumber !== 'string' || roomNumber.trim() === '') {
-      return res.status(400).json({ message: 'Número de habitación inválido o faltante' });
+    // Obtener URLs de las imágenes subidas
+    let imageUrls = [];
+    if (req.files) {
+      imageUrls = req.files.map(file => `/uploads/${file.filename}`);
     }
 
-    if (typeof price !== 'number' || isNaN(price) || price <= 0) {
-      return res.status(400).json({ message: 'Precio debe ser un número positivo' });
-    }
-
-    if (imageUrls !== undefined) {
-      if (!Array.isArray(imageUrls) || !imageUrls.every(url => typeof url === 'string')) {
-        return res.status(400).json({ message: 'imageUrls debe ser un arreglo de strings' });
-      }
-    }
-
-    if (typeof capacity !== 'number' || isNaN(capacity) || capacity < 1) {
-      return res.status(400).json({ message: 'La capacidad debe ser un número mayor o igual a 1' });
-    }
-
-    const newRoom = new Room({
-      roomNumber: roomNumber.trim(),
+    const newRoom = new Habitacion({
+      roomNumber,
+      type,
       price,
-      description: typeof description === 'string' ? description.trim() : '',
-      imageUrls: Array.isArray(imageUrls) ? imageUrls : [],
+      description,
       capacity,
-      // no pasamos "type", lo pone mongoose solo como 'cabaña'
+      isAvailable,
+      imageUrls,
     });
 
     await newRoom.save();
-
-    res.status(201).json({
-      message: 'Habitación creada',
-      room: newRoom,
-    });
+    res.status(201).json(newRoom);
   } catch (error) {
-    if (error.code === 11000) {
-      return res.status(400).json({ message: 'El número de habitación ya existe' });
-    }
-    res.status(500).json({ message: 'Error al crear la habitación', error: error.message });
+    res.status(500).json({ message: error.message });
   }
 };
+
 
 const getRooms = async (req, res) => {
   try {
@@ -130,95 +113,19 @@ const getRoomById = async (req, res) => {
 const updateRoom = async (req, res) => {
   try {
     const { id } = req.params;
+    const updateData = { ...req.body };
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'ID inválido' });
+    if (req.files && req.files.length > 0) {
+      updateData.imageUrls = req.files.map(file => `/uploads/${file.filename}`);
     }
 
-    // ⚠️ Como los datos llegan como string (por FormData), parseamos
-    const roomNumber = req.body.roomNumber;
-    const type = req.body.type;
-    const price = req.body.price ? parseFloat(req.body.price) : undefined;
-    const description = req.body.description;
-    const capacity = req.body.capacity ? parseInt(req.body.capacity) : undefined;
-    const isAvailable =
-      req.body.isAvailable !== undefined
-        ? req.body.isAvailable === 'true' || req.body.isAvailable === true
-        : undefined;
-
-    const fieldsToUpdate = {};
-
-    if (roomNumber !== undefined) {
-      if (typeof roomNumber !== 'string' || roomNumber.trim() === '') {
-        return res.status(400).json({ message: 'Número de habitación inválido' });
-      }
-      fieldsToUpdate.roomNumber = roomNumber.trim();
-    }
-
-    if (type !== undefined) {
-      const validTypes = ['cabana', 'individual', 'doble', 'suite', 'familiar', 'deluxe'];
-      if (!validTypes.includes(type)) {
-        return res.status(400).json({ message: 'Tipo de habitación no válido' });
-      }
-      fieldsToUpdate.type = type;
-    }
-
-    if (price !== undefined) {
-      if (typeof price !== 'number' || isNaN(price) || price <= 0) {
-        return res.status(400).json({ message: 'Precio debe ser un número positivo' });
-      }
-      fieldsToUpdate.price = price;
-    }
-
-    if (description !== undefined) {
-      if (typeof description !== 'string') {
-        return res.status(400).json({ message: 'Descripción debe ser texto' });
-      }
-      fieldsToUpdate.description = description.trim();
-    }
-
-    if (capacity !== undefined) {
-      if (typeof capacity !== 'number' || isNaN(capacity) || capacity < 1) {
-        return res.status(400).json({ message: 'Capacidad inválida' });
-      }
-      fieldsToUpdate.capacity = capacity;
-    }
-
-    if (isAvailable !== undefined) {
-      if (typeof isAvailable !== 'boolean') {
-        return res.status(400).json({ message: 'isAvailable debe ser booleano' });
-      }
-      fieldsToUpdate.isAvailable = isAvailable;
-    }
-
-    if (Object.keys(fieldsToUpdate).length === 0) {
-      return res.status(400).json({ message: 'No se proporcionaron campos válidos para actualizar' });
-    }
-
-    // Verificar que el número de habitación no exista en otra habitación
-    if (fieldsToUpdate.roomNumber) {
-      const roomWithSameNumber = await Room.findOne({ roomNumber: fieldsToUpdate.roomNumber });
-      if (roomWithSameNumber && roomWithSameNumber._id.toString() !== id) {
-        return res.status(400).json({ message: 'El número de habitación ya está registrado' });
-      }
-    }
-
-    // Actualizar habitación
-    const updatedRoom = await Room.findByIdAndUpdate(id, fieldsToUpdate, { new: true });
-
+    const updatedRoom = await Habitacion.findByIdAndUpdate(id, updateData, { new: true });
     if (!updatedRoom) {
       return res.status(404).json({ message: 'Habitación no encontrada' });
     }
-
-    res.json({
-      message: 'Habitación actualizada',
-      room: updatedRoom,
-    });
+    res.json(updatedRoom);
   } catch (error) {
-    if (error.code === 11000) {
-      return res.status(400).json({ message: 'El número de habitación ya existe' });
-    }
-    res.status(500).json({ message: 'Error al actualizar la habitación', error: error.message });
+    res.status(500).json({ message: error.message });
   }
 };
 

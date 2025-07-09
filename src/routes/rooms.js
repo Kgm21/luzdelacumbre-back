@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const { check } = require('express-validator');
-
+const upload = require('../middlewares/upload');
 const {
   createRoom,
   getRooms,
@@ -30,12 +30,12 @@ router.get(
   getRoomById
 );
 
-// POST: Crear una nueva habitación (solo admin)
 router.post(
   '/',
   [
     validateJWT,
     isAdminRole,
+    upload.array('photos', 5),  // máximo 5 imágenes
     check('roomNumber', 'El número de habitación es obligatorio').notEmpty(),
     check('roomNumber').custom(isValidRoomNumber),
     check('price', 'El precio debe ser un número positivo').isFloat({ min: 0 }),
@@ -44,12 +44,12 @@ router.post(
   createRoom
 );
 
-// PUT: Actualizar una habitación (solo admin)
 router.put(
   '/:id',
   [
     validateJWT,
     isAdminRole,
+    upload.array('photos', 5),  // también acá
     check('id', 'No es un ID válido').isMongoId(),
     check('id').custom(isValidRoom),
     check('roomNumber').optional().custom(isValidRoomNumber),
