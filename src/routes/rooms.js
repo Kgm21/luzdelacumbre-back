@@ -1,12 +1,12 @@
 const { Router } = require('express');
 const { check } = require('express-validator');
-const upload = require('../middlewares/upload');
+
 const {
   createRoom,
   getRooms,
-  updateRoom,
-  deleteRoom,
   getRoomById,
+  updateRoom,
+  disableRoom, // Updated to match controller export
 } = require('../controllers/roomController.js');
 const { validateFields } = require('../middlewares/validateFields.js');
 const { validateJWT } = require('../middlewares/validateJWT.js');
@@ -30,12 +30,12 @@ router.get(
   getRoomById
 );
 
+// POST: Crear una habitación (solo admin)
 router.post(
   '/',
   [
     validateJWT,
     isAdminRole,
-    upload.array('photos', 5),  // máximo 5 imágenes
     check('roomNumber', 'El número de habitación es obligatorio').notEmpty(),
     check('roomNumber').custom(isValidRoomNumber),
     check('price', 'El precio debe ser un número positivo').isFloat({ min: 0 }),
@@ -44,25 +44,22 @@ router.post(
   createRoom
 );
 
+// PUT: Actualizar una habitación (solo admin)
 router.put(
   '/:id',
   [
     validateJWT,
     isAdminRole,
-    upload.array('photos', 5),  // también acá
     check('id', 'No es un ID válido').isMongoId(),
     check('id').custom(isValidRoom),
     check('roomNumber').optional().custom(isValidRoomNumber),
-    check('type', 'Tipo de habitación no válido')
-      .optional()
-      .isIn(['individual', 'doble', 'suite', 'familiar', 'deluxe', 'cabana']),
     check('price', 'El precio debe ser un número positivo').optional().isFloat({ min: 0 }),
     validateFields,
   ],
   updateRoom
 );
 
-// DELETE: Eliminar una habitación (solo admin)
+// DELETE: Deshabilitar una habitación (solo admin)
 router.delete(
   '/:id',
   [
@@ -72,7 +69,7 @@ router.delete(
     check('id').custom(isValidRoom),
     validateFields,
   ],
-  deleteRoom
+  disableRoom // Updated from deleteRoom to disableRoom
 );
 
 module.exports = router;

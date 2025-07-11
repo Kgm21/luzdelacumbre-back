@@ -33,4 +33,3 @@ HabitacionSchema.pre('findOneAndUpdate', function (next) {
 });
 
 module.exports = model('Habitacion', HabitacionSchema, 'habitacions');
-
