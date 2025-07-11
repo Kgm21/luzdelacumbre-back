@@ -133,7 +133,7 @@ const updateRoom = async (req, res) => {
     const { id } = req.params;
     const { type } = req.body;
 
-    console.log('Request body:', req.body); // Temporary logging for debugging
+    console.log('Request body:', req.body);
 
     if (type !== undefined) {
       return res.status(400).json({ message: 'El tipo de habitación no puede modificarse' });
@@ -267,7 +267,10 @@ const disableRoom = async (req, res) => {
     await session.commitTransaction();
     session.endSession();
 
-    res.json({ message: `Habitación ${room.isAvailable ? 'habilitada' : 'deshabilitada'}`, room: { ...room.toObject(), id: room._id.toString() } });
+    res.json({
+      message: `Habitación ${room.isAvailable ? 'habilitada' : 'deshabilitada'}`,
+      room: { ...room.toObject(), id: room._id.toString() },
+    });
   } catch (error) {
     await session.abortTransaction();
     session.endSession();

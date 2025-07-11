@@ -36,21 +36,22 @@ router.post('/', [
 ], createBooking);
 
 // PUT: Actualizar una reserva (solo administradores)
-router.put('/:id', [
-  validateJWT,
-  isAdminRole,
-  check('id', 'No es un ID válido').isMongoId(),
-  check('id').custom(isValidBooking),
-  check('userId').optional().isMongoId(),
-  check('userId').optional().custom(isValidUser),
-  check('roomId').optional().isMongoId(),
-  check('roomId').optional().custom(isValidRoom),
-  check('checkInDate', 'La fecha de entrada debe ser válida').optional().isDate(),
-  check('checkOutDate', 'La fecha de salida debe ser válida').optional().isDate(),
-  check('totalPrice', 'El precio total debe ser un número positivo').optional().isFloat({ min: 0 }),
-  check('status', 'El estado no es válido').optional().isIn(['confirmed', 'cancelled', 'pending']),
-  validateFields,
-], updateBooking);
+router.put(
+  '/:id',
+  [
+    validateJWT,
+    isAdminRole,
+    check('id', 'No es un ID válido').isMongoId(),
+    check('roomId', 'No es un ID de habitación válido').optional().isMongoId(),
+    check('roomId').optional().custom(isValidRoom),
+    check('passengersCount', 'La cantidad de pasajeros debe ser un número').optional().isInt({ min: 1 }),
+    check('checkInDate', 'La fecha de check-in es obligatoria').optional().isDate(),
+    check('checkOutDate', 'La fecha de check-out es obligatoria').optional().isDate(),
+    validateFields,
+  ],
+  updateBooking
+);
+
 
 // DELETE: Eliminar una reserva (solo administradores)
 router.delete('/:id', [
