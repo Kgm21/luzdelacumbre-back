@@ -49,22 +49,30 @@ const createRoom = async (req, res) => {
 
 const getRooms = async (req, res) => {
   try {
-    const { checkInDate, checkOutDate, limit = 10, page = 1 } = req.query;
+    const { checkInDate, checkOutDate } = req.query;
+    const limit = parseInt(req.query.limit, 10) || 10;
+    const page = parseInt(req.query.page, 10) || 1;
     const skip = (page - 1) * limit;
 
-    let rooms = await Room.find().skip(skip).limit(parseInt(limit)).lean();
+    let rooms = await Room.find().skip(skip).limit(limit).lean();
 
     if (checkInDate && checkOutDate) {
       const start = new Date(checkInDate);
       const end = new Date(checkOutDate);
 
-      if (isNaN(start) || isNaN(end) || end <= start) {
+      if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) {
         return res.status(400).json({ message: 'Fechas inválidas o mal ordenadas' });
       }
 
+      // Helper para comparar solo día-mes-año sin hora
+      const isSameDay = (d1, d2) =>
+        d1.getFullYear() === d2.getFullYear() &&
+        d1.getMonth() === d2.getMonth() &&
+        d1.getDate() === d2.getDate();
+
       const dates = [];
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        dates.push(new Date(d.getTime()));
+        dates.push(new Date(d.getFullYear(), d.getMonth(), d.getDate()));
       }
 
       const availabilities = await Availability.find({
@@ -78,7 +86,7 @@ const getRooms = async (req, res) => {
           );
           const isAvailable = dates.every((date) =>
             roomAvailabilities.some(
-              (avail) => avail.date.getTime() === date.getTime() && avail.isAvailable
+              (avail) => isSameDay(avail.date, date) && avail.isAvailable
             )
           );
 
@@ -101,8 +109,8 @@ const getRooms = async (req, res) => {
     res.json({
       data: rooms,
       total: rooms.length,
-      page: parseInt(page),
-      limit: parseInt(limit),
+      page,
+      limit,
     });
   } catch (error) {
     console.error('Error al obtener habitaciones:', error);
@@ -133,16 +141,14 @@ const updateRoom = async (req, res) => {
     const { id } = req.params;
     const { type } = req.body;
 
-    console.log('Request body:', req.body);
-
     if (type !== undefined) {
       return res.status(400).json({ message: 'El tipo de habitación no puede modificarse' });
     }
 
     const roomNumber = req.body.roomNumber;
-    const price = req.body.price ? parseFloat(req.body.price) : undefined;
+    const price = req.body.price !== undefined ? parseFloat(req.body.price) : undefined;
     const description = req.body.description;
-    const capacity = req.body.capacity ? parseInt(req.body.capacity) : undefined;
+    const capacity = req.body.capacity !== undefined ? parseInt(req.body.capacity, 10) : undefined;
     const isAvailable =
       req.body.isAvailable !== undefined
         ? req.body.isAvailable === 'true' || req.body.isAvailable === true
@@ -193,89 +199,58 @@ const updateRoom = async (req, res) => {
       fieldsToUpdate.imageUrls = imageUrls;
     }
 
-    if (Object.keys(fieldsToUpdate).length === 0) {
-      return res.status(400).json({ message: 'No se proporcionaron campos válidos para actualizar' });
-    }
-
-    if (fieldsToUpdate.roomNumber) {
-      const roomWithSameNumber = await Room.findOne({ roomNumber: fieldsToUpdate.roomNumber });
-      if (roomWithSameNumber && roomWithSameNumber._id.toString() !== id) {
-        return res.status(400).json({ message: 'El número de habitación ya está registrado' });
-      }
-    }
-
-    const updatedRoom = await Room.findByIdAndUpdate(id, fieldsToUpdate, { new: true }).lean();
+    const updatedRoom = await Room.findByIdAndUpdate(id, fieldsToUpdate, {
+      new: true,
+      runValidators: true,
+    }).lean();
 
     if (!updatedRoom) {
       return res.status(404).json({ message: 'Habitación no encontrada' });
     }
 
-    res.json({
-      message: 'Habitación actualizada',
-      room: { ...updatedRoom, id: updatedRoom._id.toString() },
-    });
+    res.json({ message: 'Habitación actualizada', room: updatedRoom });
   } catch (error) {
-    if (error.code === 11000) {
-      return res.status(400).json({ message: 'El número de habitación ya existe' });
-    }
     res.status(500).json({ message: 'Error al actualizar la habitación', error: error.message });
   }
 };
 
-const disableRoom = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
+const deleteRoom = async (req, res) => {
   try {
     const { id } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(400).json({ message: 'ID inválido' });
-    }
-
-    const room = await Room.findById(id).session(session);
+    const room = await Room.findByIdAndDelete(id);
     if (!room) {
-      await session.abortTransaction();
-      session.endSession();
+      return res.status(404).json({ message: 'Habitación no encontrada' });
+    }
+    res.json({ message: 'Habitación eliminada' });
+  } catch (error) {
+    res.status(500).json({ message: 'Error al eliminar la habitación', error: error.message });
+  }
+};
+
+const disableRoom = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const room = await Room.findById(id);
+    if (!room) {
       return res.status(404).json({ message: 'Habitación no encontrada' });
     }
 
-    const activeBookings = await Booking.find({
-      roomId: id,
-      checkOutDate: { $gte: new Date() },
-      status: { $in: ['confirmed', 'pending'] },
-    }).session(session);
-
-    if (activeBookings.length > 0) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(400).json({
-        message: 'No se puede deshabilitar la habitación porque tiene reservas activas',
-      });
-    }
-
-    await Availability.updateMany(
-      { roomId: id, date: { $gte: new Date() } },
-      { $set: { isAvailable: true } },
-      { session }
-    );
-
     room.isAvailable = !room.isAvailable;
-    await room.save({ session });
+    await room.save();
 
-    await session.commitTransaction();
-    session.endSession();
+    // Marcar todas las disponibilidades asociadas
+    await Availability.updateMany(
+      { roomId: room._id },
+      { $set: { isAvailable: room.isAvailable } }
+    );
 
     res.json({
       message: `Habitación ${room.isAvailable ? 'habilitada' : 'deshabilitada'}`,
-      room: { ...room.toObject(), id: room._id.toString() },
+      room,
     });
   } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
-    console.error('Error al deshabilitar la habitación:', error);
-    res.status(500).json({ message: 'Error al deshabilitar la habitación', error: error.message });
+    res.status(500).json({ message: 'Error al actualizar estado de habitación', error: error.message });
   }
 };
 
@@ -284,5 +259,6 @@ module.exports = {
   getRooms,
   getRoomById,
   updateRoom,
+  deleteRoom,
   disableRoom,
 };
