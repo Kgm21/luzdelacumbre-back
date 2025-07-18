@@ -468,52 +468,34 @@ const getMyBookings = async (req, res) => {
   }
 };
 
+
 const deleteMyBooking = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
+  const bookingId = req.params.id;
+  const userId = req.user._id;
 
   try {
-    const bookingId = req.params.id;
-    const userId = req.user._id;
+    const reserva = await Reserva.findById(bookingId);
 
-    const booking = await Booking.findById(bookingId).session(session);
-    if (!booking) {
-      await session.abortTransaction();
-      session.endSession();
+    if (!reserva) {
       return res.status(404).json({ message: 'Reserva no encontrada' });
     }
 
-    if (booking.userId.toString() !== userId.toString()) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(403).json({ message: 'No tienes permiso para cancelar esta reserva' });
+    // Validar si la reserva tiene asignado un usuario
+    if (!reserva.userId) {
+      return res.status(400).json({ message: 'La reserva no tiene un usuario asignado' });
     }
 
-    // Liberar fechas
-    const dates = [];
-    for (let d = new Date(booking.checkInDate); d < booking.checkOutDate; d.setUTCDate(d.getUTCDate() + 1)) {
-      dates.push(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())));
+    if (reserva.userId.toString() !== userId.toString()) {
+      return res.status(403).json({ message: 'No puedes cancelar esta reserva' });
     }
 
-    await Availability.updateMany(
-      { roomId: booking.roomId, date: { $in: dates } },
-      { $set: { isAvailable: true } },
-      { session }
-    );
+    await Reserva.findByIdAndDelete(bookingId);
 
-    await Booking.findByIdAndDelete(bookingId).session(session);
-
-    await session.commitTransaction();
-    session.endSession();
-
-    res.json({ message: 'Tu reserva fue cancelada correctamente y las fechas liberadas' });
-  } catch (err) {
-    await session.abortTransaction();
-    session.endSession();
-    console.error(err);
-    res.status(500).json({ message: 'Error al cancelar tu reserva' });
+    return res.json({ ok: true, message: 'Reserva cancelada correctamente' });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Error al cancelar la reserva' });
   }
 };
-
 
 module.exports = { createBooking, getBookings, getBookingById, updateBooking, deleteBooking,getMyBookings,deleteMyBooking}

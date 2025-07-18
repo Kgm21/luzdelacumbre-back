@@ -58,6 +58,12 @@ router.put('/:id', [
   check('checkOutDate', 'La fecha de check-out es obligatoria').optional().isDate(),
   validateFields,
 ], updateBooking);
+router.delete('/mias/:id', [
+  validateJWT,
+  check('id', 'No es un ID válido').isMongoId(),
+  check('id').custom(isValidBooking),
+  validateFields,
+], deleteMyBooking);
 
 router.delete('/:id', [
   validateJWT,
@@ -67,12 +73,7 @@ router.delete('/:id', [
   validateFields,
 ], deleteBooking);
 
-router.delete('/mias/:id', [
-  validateJWT,
-  check('id', 'No es un ID válido').isMongoId(),
-  check('id').custom(isValidBooking),
-  validateFields,
-], deleteMyBooking);
+
 
 
 
