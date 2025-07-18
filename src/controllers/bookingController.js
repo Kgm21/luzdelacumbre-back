@@ -1,4 +1,4 @@
-const Booking = require('../models/Booking');
+const Booking = require('../models/Booking')
 const Availability = require('../models/Availability');
 const mongoose = require('mongoose');
 const Room = require('../models/Room');
@@ -455,15 +455,30 @@ const deleteBooking = async (req, res) => {
 };
 const getMyBookings = async (req, res) => {
   try {
-    console.log("Usuario autenticado:", req.user);
-    const reservas = await Reserva.find({ userId: req.user._id }).populate('roomId');
-    res.json({ ok: true, reservas });
-  } catch (error) {
-    console.error('Error al obtener mis reservas', error);
-    res.status(500).json({
-      ok: false,
-      message: 'Error al obtener mis reservas'
+    const userId = req.user._id;  // Usuario autenticado
+    console.log('UserId obtenido del token:', userId);  // <-- LOG para debug
+
+    // Asegúrate que el campo 'userId' en tu esquema de Booking es así, o ajusta si usas otro nombre
+    const bookings = await Booking.find({ userId })
+      .populate('roomId')
+      .populate('userId')
+      .sort({ checkInDate: 1 }); // Ordenar por fecha de entrada (asegúrate que el campo es 'checkInDate')
+
+    console.log('Reservas encontradas:', bookings.length);  // <-- LOG para debug
+
+    const formattedBookings = bookings.map(booking => ({
+      ...booking.toObject(),
+      id: booking._id.toString(),
+    }));
+
+    return res.json({
+      data: formattedBookings,
+      total: formattedBookings.length,
     });
+
+  } catch (error) {
+    console.error('Error al obtener mis reservas:', error);
+    return res.status(500).json({ message: 'Error al obtener las reservas del usuario', error: error.message });
   }
 };
 
