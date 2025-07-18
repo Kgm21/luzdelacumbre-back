@@ -6,7 +6,7 @@ const optionalAuth = async (req, res, next) => {
   console.log('Token recibido:', token); // <-- para debug
   if (!token) {
     // No hay token, seguimos sin autenticar
-    return next();
+    return next();     
   }
 
   try {

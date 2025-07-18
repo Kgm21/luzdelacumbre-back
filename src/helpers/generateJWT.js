@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken');
 
-const generateJWT = (uid) => {
+const generateJWT = (uid, role) => {
   return new Promise((resolve, reject) => {
     const secret = process.env.JWT_SECRET;
 
@@ -8,8 +8,7 @@ const generateJWT = (uid) => {
       return reject(new Error('JWT_SECRET no está definido en las variables de entorno'));
     }
 
-    const payload = { uid };
-
+    const payload = { uid, role }; // Include both uid and role
     jwt.sign(payload, secret, { expiresIn: '4h' }, (err, token) => {
       if (err) {
         reject(new Error('No se pudo generar el token: ' + err.message));

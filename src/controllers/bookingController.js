@@ -453,5 +453,22 @@ const deleteBooking = async (req, res) => {
     res.status(500).json({ message: 'Error al eliminar la reserva', error: error.message });
   }
 };
+const getMyBookings = async (req, res) => {
+  try {
+    const userId = req.user.uid || req.user._id;
 
-module.exports = { createBooking, getBookings, getBookingById, updateBooking, deleteBooking };
+    const bookings = await Booking.find({
+      userId,
+      status: { $in: ['confirmed', 'pending'] }
+    })
+      .populate('roomId')
+      .lean();
+
+    res.json(bookings);
+  } catch (err) {
+    console.error('Error en getMyBookings:', err);
+    res.status(500).json({ message: 'Error al obtener reservas del usuario' });
+  }
+};
+
+module.exports = { createBooking, getBookings, getBookingById, updateBooking, deleteBooking,getMyBookings};
