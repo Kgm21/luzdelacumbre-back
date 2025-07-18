@@ -488,7 +488,7 @@ const deleteMyBooking = async (req, res) => {
   const userId = req.user._id;
 
   try {
-    const reserva = await Reserva.findById(bookingId);
+    const reserva = await Booking.findById(bookingId);
 
     if (!reserva) {
       return res.status(404).json({ message: 'Reserva no encontrada' });
@@ -503,7 +503,7 @@ const deleteMyBooking = async (req, res) => {
       return res.status(403).json({ message: 'No puedes cancelar esta reserva' });
     }
 
-    await Reserva.findByIdAndDelete(bookingId);
+    await Booking.findByIdAndDelete(bookingId);
 
     return res.json({ ok: true, message: 'Reserva cancelada correctamente' });
   } catch (error) {
