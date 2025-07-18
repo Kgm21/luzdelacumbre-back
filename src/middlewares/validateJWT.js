@@ -18,11 +18,10 @@ const validateJWT = async (req, res, next) => {
       return res.status(401).json({ message: 'Usuario no válido o inactivo' });
     }
 
-   req.user = {
-  _id: user._id,   // Esto es lo que luego usas en getMyBookings
-  role: user.role || null
-};
-
+    req.user = {
+      uid: payload.uid,
+      role: user.role || null
+    };
 
     next();
   } catch (err) {

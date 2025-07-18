@@ -29,12 +29,14 @@ router.get('/validate-token', validateJWT, (req, res) => {
   console.log("🔍 req.uid:", req.uid);
   console.log("🔍 req.role:", req.role);
 
-  res.json({
-    ok: true,
-    message: 'Token válido',
-    userId: req.uid,
-    role: req.role
-  });
+ res.json({
+  ok: true,
+  message: 'Token válido',
+  userId: req.user.uid,
+  role: req.user.role
+});
+
+
 });
 
 // ✅ Ruta protegida para obtener perfil del usuario
