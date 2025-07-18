@@ -455,16 +455,15 @@ const deleteBooking = async (req, res) => {
 };
 const getMyBookings = async (req, res) => {
   try {
-    const userId = req.user._id;
-
-    const bookings = await Booking.find({ user: userId })
-      .populate('roomId', 'name price')
-      .populate('user', 'name email');
-
-    res.json(bookings);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Error al obtener tus reservas' });
+    console.log("Usuario autenticado:", req.user);
+    const reservas = await Reserva.find({ userId: req.user._id }).populate('roomId');
+    res.json({ ok: true, reservas });
+  } catch (error) {
+    console.error('Error al obtener mis reservas', error);
+    res.status(500).json({
+      ok: false,
+      message: 'Error al obtener mis reservas'
+    });
   }
 };
 
