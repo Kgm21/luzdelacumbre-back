@@ -455,20 +455,65 @@ const deleteBooking = async (req, res) => {
 };
 const getMyBookings = async (req, res) => {
   try {
-    const userId = req.user.uid || req.user._id;
+    const userId = req.user._id;
 
-    const bookings = await Booking.find({
-      userId,
-      status: { $in: ['confirmed', 'pending'] }
-    })
-      .populate('roomId')
-      .lean();
+    const bookings = await Booking.find({ user: userId })
+      .populate('roomId', 'name price')
+      .populate('user', 'name email');
 
     res.json(bookings);
   } catch (err) {
-    console.error('Error en getMyBookings:', err);
-    res.status(500).json({ message: 'Error al obtener reservas del usuario' });
+    console.error(err);
+    res.status(500).json({ message: 'Error al obtener tus reservas' });
   }
 };
 
-module.exports = { createBooking, getBookings, getBookingById, updateBooking, deleteBooking,getMyBookings};
+const deleteMyBooking = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const bookingId = req.params.id;
+    const userId = req.user._id;
+
+    const booking = await Booking.findById(bookingId).session(session);
+    if (!booking) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(404).json({ message: 'Reserva no encontrada' });
+    }
+
+    if (booking.userId.toString() !== userId.toString()) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(403).json({ message: 'No tienes permiso para cancelar esta reserva' });
+    }
+
+    // Liberar fechas
+    const dates = [];
+    for (let d = new Date(booking.checkInDate); d < booking.checkOutDate; d.setUTCDate(d.getUTCDate() + 1)) {
+      dates.push(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())));
+    }
+
+    await Availability.updateMany(
+      { roomId: booking.roomId, date: { $in: dates } },
+      { $set: { isAvailable: true } },
+      { session }
+    );
+
+    await Booking.findByIdAndDelete(bookingId).session(session);
+
+    await session.commitTransaction();
+    session.endSession();
+
+    res.json({ message: 'Tu reserva fue cancelada correctamente y las fechas liberadas' });
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    console.error(err);
+    res.status(500).json({ message: 'Error al cancelar tu reserva' });
+  }
+};
+
+
+module.exports = { createBooking, getBookings, getBookingById, updateBooking, deleteBooking,getMyBookings,deleteMyBooking}

@@ -5,7 +5,8 @@ const {
   getBookings,
   getBookingById,
   updateBooking,
-  deleteBooking
+  deleteBooking,
+  deleteMyBooking
 } = require('../controllers/bookingController');
 const { validateFields } = require('../middlewares/validateFields');
 const { validateJWT } = require('../middlewares/validateJWT');
@@ -65,5 +66,14 @@ router.delete('/:id', [
   check('id').custom(isValidBooking),
   validateFields,
 ], deleteBooking);
+
+router.delete('/mias/:id', [
+  validateJWT,
+  check('id', 'No es un ID válido').isMongoId(),
+  check('id').custom(isValidBooking),
+  validateFields,
+], deleteMyBooking);
+
+
 
 module.exports = router;
