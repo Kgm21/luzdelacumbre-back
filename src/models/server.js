@@ -5,36 +5,30 @@ const { dbConnection } = require('../database/config');
 
 class Server {
   constructor() {
- 
     this.app = express();
     this.port = process.env.PORT || 3000;
+
+    // Definir rutas base
     this.authPath = '/api/auth';
     this.usuariosPath = '/api/usuarios';
     this.roomsPath = '/api/rooms';
     this.bookingsPath = '/api/bookings';
     this.availabilityPath = '/api/availability';
-    this.imagesPath = '/api/images'; // Nueva ruta para imágenes
-    this.contactPath ='/api/contact'
+    this.imagesPath = '/api/images';
+    this.contactPath = '/api/contact';
 
-
-
-    
-    
-
-    // Conectar con la base de datos
+    // Conectar a base de datos
     this.conectarDB();
 
     // Middlewares
     this.middlewares();
 
-    // Rutas
+    // Rutas de la aplicación
     this.routes();
 
-    // Manejo de errores 404
+    // Manejo de rutas no encontradas
     this.app.use((req, res) => {
-      res.status(404).json({
-        message: 'Ruta no encontrada',
-      });
+      res.status(404).json({ message: 'Ruta no encontrada' });
     });
   }
 
@@ -48,20 +42,34 @@ class Server {
     }
   }
 
- middlewares() {
-  // CORS
-  this.app.use(cors());
+  middlewares() {
+    const allowedOrigins = [
+      'https://devluzdelacumbre.netlify.app',
+      'http://localhost:5173',
+    ];
 
-  // Parsear el cuerpo de las solicitudes en JSON
-  this.app.use(express.json());
+    this.app.use(cors({
+      origin: function (origin, callback) {
+        if (!origin || allowedOrigins.includes(origin)) {
+          return callback(null, true);
+        }
+        return callback(new Error('No permitido por CORS'));
+      },
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+      credentials: true,
+    }));
 
-  // Servir archivos estáticos
-  this.app.use(express.static('public'));
-  this.app.use(express.static(path.join(__dirname, '../public')));
-  this.app.use('/images', express.static(path.join(__dirname, '../public/images')));
+    // Permitir solicitudes OPTIONS para preflight
+    this.app.options('*', cors());
 
+    // Parseo de cuerpo JSON
+    this.app.use(express.json());
 
-}
+    // Archivos estáticos
+    this.app.use(express.static('public'));
+    this.app.use(express.static(path.join(__dirname, '../public')));
+    this.app.use('/images', express.static(path.join(__dirname, '../public/images')));
+  }
 
   routes() {
     this.app.use(this.authPath, require('../routes/auth'));
@@ -69,10 +77,8 @@ class Server {
     this.app.use(this.roomsPath, require('../routes/rooms'));
     this.app.use(this.bookingsPath, require('../routes/bookings'));
     this.app.use(this.availabilityPath, require('../routes/availability'));
-    this.app.use(this.imagesPath, require('../routes/images')); 
+    this.app.use(this.imagesPath, require('../routes/images'));
     this.app.use(this.contactPath, require('../routes/contact'));
-    
-
   }
 
   listen() {
