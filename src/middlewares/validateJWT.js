@@ -18,10 +18,8 @@ const validateJWT = async (req, res, next) => {
       return res.status(401).json({ message: 'Usuario no válido o inactivo' });
     }
 
-    req.user = {
-      uid: payload.uid,
-      role: user.role || null
-    };
+    req.user = user;
+
 
     next();
   } catch (err) {

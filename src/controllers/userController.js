@@ -140,33 +140,55 @@ const usuarioPut = async (req = request, res = response) => {
   const { id } = req.params;
   const { password, google, _id, role, ...resto } = req.body;
 
-  // Solo el admin puede modificar el rol
-  if (req.user._id.toString() !== id && req.user.role !== 'admin') {
-    return res.status(403).json({ mensaje: 'No tienes permiso para actualizar este perfil' });
-  }
-
-  // Si no es admin, eliminar cualquier intento de modificar el rol
-  if (req.user.role !== 'admin') {
-    delete resto.role;
-  } else {
-    // Si es admin, permitimos cambiar el rol si lo envía
-    if (role) resto.role = role;
-  }
-
-  // Opcional: actualizar contraseña si se proporciona
-  if (password) {
-    const salt = bcrypt.genSaltSync();
-    resto.password = bcrypt.hashSync(password, salt);
-  }
-
   try {
+    // Validar que el ID sea válido
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ mensaje: "ID inválido" });
+    }
+
+    // Verifica si req.user existe y tiene ._id
+    const userId = req.user?._id?.toString?.();
+    const userRole = req.user?.role;
+
+    if (!userId || !userRole) {
+      return res.status(401).json({ mensaje: "Usuario no autenticado" });
+    }
+
+    // Solo el admin puede modificar el rol de otro
+    if (req.user.uid !== id && req.user.role !== 'admin') {
+
+      return res.status(403).json({ mensaje: 'No tienes permiso para actualizar este perfil' });
+    }
+
+    // Si no es admin, eliminar cualquier intento de modificar el rol
+    if (userRole !== 'admin') {
+      delete resto.role;
+    } else {
+      if (role) {
+        resto.role = role;
+      }
+    }
+
+    // Si se manda nueva contraseña, hashearla
+    if (password) {
+      const salt = bcrypt.genSaltSync();
+      resto.password = bcrypt.hashSync(password, salt);
+    }
+
     const usuarioActualizado = await Usuario.findByIdAndUpdate(id, resto, { new: true });
-    res.json({ usuarioActualizado });
+
+    if (!usuarioActualizado) {
+      return res.status(404).json({ mensaje: "Usuario no encontrado para actualizar" });
+    }
+
+    res.json({ mensaje: "Usuario actualizado", usuario: usuarioActualizado });
+
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ mensaje: 'Error al actualizar usuario' });
+    console.error("❌ Error en usuarioPut:", error.stack);
+    res.status(500).json({ mensaje: 'Error al actualizar usuario', error: error.message });
   }
 };
+
 
 
 
