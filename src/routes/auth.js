@@ -39,7 +39,5 @@ router.get('/validate-token', validateJWT, (req, res) => {
 
 });
 
-// ✅ Ruta protegida para obtener perfil del usuario
-router.get('/perfil', validateJWT, perfil);
 
 module.exports = router;

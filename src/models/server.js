@@ -43,21 +43,7 @@ class Server {
   }
 
   middlewares() {
-    const allowedOrigins = [
-      'https://devluzdelacumbre.netlify.app',
-      'http://localhost:5173',
-    ];
-
-    this.app.use(cors({
-      origin: function (origin, callback) {
-        if (!origin || allowedOrigins.includes(origin)) {
-          return callback(null, true);
-        }
-        return callback(new Error('No permitido por CORS'));
-      },
-      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-      credentials: true,
-    }));
+   
 
     // Permitir solicitudes OPTIONS para preflight
     this.app.options('*', cors());
@@ -72,12 +58,12 @@ class Server {
   }
 
   routes() {
-    this.app.use(this.authPath, require('../routes/auth'));
+   this.app.use(this.authPath, require('../routes/auth'));
     this.app.use(this.usuariosPath, require('../routes/users'));
     this.app.use(this.roomsPath, require('../routes/rooms'));
     this.app.use(this.bookingsPath, require('../routes/bookings'));
     this.app.use(this.availabilityPath, require('../routes/availability'));
-    this.app.use(this.imagesPath, require('../routes/images'));
+   this.app.use(this.imagesPath, require('../routes/images'));
     this.app.use(this.contactPath, require('../routes/contact'));
   }
 

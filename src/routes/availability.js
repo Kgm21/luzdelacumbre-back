@@ -6,7 +6,7 @@ const {
   getAvailabilityById,
   updateAvailability,
   deleteAvailability,
-  findAvailableRooms,
+ 
   initAvailability
 } = require('../controllers/availabilityController');
 
@@ -24,8 +24,8 @@ router.post('/init', [
   validateFields
 ], initAvailability);
 
-// ✅ Rutas públicas o semipúblicas
-router.get('/available-rooms', findAvailableRooms);
+
+
 
 // ✅ Rutas protegidas para admin
 router.get('/', [

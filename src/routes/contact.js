@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Contact = require('../models/contact');
-// O usa el controller: const { deleteContact } = require('../controllers/contactController');
+ const { deleteContact } = require('../controllers/contactController');
 
 // POST /api/contact
 router.post('/', async (req, res) => {

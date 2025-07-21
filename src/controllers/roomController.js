@@ -50,11 +50,8 @@ const createRoom = async (req, res) => {
 const getRooms = async (req, res) => {
   try {
     const { checkInDate, checkOutDate } = req.query;
-    const limit = parseInt(req.query.limit, 10) || 10;
-    const page = parseInt(req.query.page, 10) || 1;
-    const skip = (page - 1) * limit;
 
-    let rooms = await Room.find().skip(skip).limit(limit).lean();
+    let rooms = await Room.find().lean();
 
     if (checkInDate && checkOutDate) {
       const start = new Date(checkInDate);
@@ -64,7 +61,6 @@ const getRooms = async (req, res) => {
         return res.status(400).json({ message: 'Fechas inválidas o mal ordenadas' });
       }
 
-      // Helper para comparar solo día-mes-año sin hora
       const isSameDay = (d1, d2) =>
         d1.getFullYear() === d2.getFullYear() &&
         d1.getMonth() === d2.getMonth() &&
@@ -106,12 +102,7 @@ const getRooms = async (req, res) => {
       }));
     }
 
-    res.json({
-      data: rooms,
-      total: rooms.length,
-      page,
-      limit,
-    });
+    res.json({ rooms, total: rooms.length });
   } catch (error) {
     console.error('Error al obtener habitaciones:', error);
     res.status(500).json({ message: 'Error al obtener las habitaciones', error: error.message });
