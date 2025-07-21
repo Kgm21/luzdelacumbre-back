@@ -14,7 +14,7 @@ class Server {
     this.roomsPath = '/api/rooms';
     this.bookingsPath = '/api/bookings';
     this.availabilityPath = '/api/availability';
-    this.imagesPath = '/api/images';
+    
     this.contactPath = '/api/contact';
 
     // Conectar a base de datos
@@ -43,10 +43,7 @@ class Server {
   }
 
   middlewares() {
-   
-
-    // Permitir solicitudes OPTIONS para preflight
-    this.app.options('*', cors());
+    this.app.use(cors());
 
     // Parseo de cuerpo JSON
     this.app.use(express.json());
@@ -58,12 +55,12 @@ class Server {
   }
 
   routes() {
-   this.app.use(this.authPath, require('../routes/auth'));
+    this.app.use(this.authPath, require('../routes/auth'));
     this.app.use(this.usuariosPath, require('../routes/users'));
     this.app.use(this.roomsPath, require('../routes/rooms'));
     this.app.use(this.bookingsPath, require('../routes/bookings'));
     this.app.use(this.availabilityPath, require('../routes/availability'));
-   this.app.use(this.imagesPath, require('../routes/images'));
+  
     this.app.use(this.contactPath, require('../routes/contact'));
   }
 

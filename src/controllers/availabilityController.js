@@ -377,6 +377,6 @@ module.exports = {
   getAvailabilityById, 
   updateAvailability, 
   deleteAvailability,
-  findAvailableRooms, // Ahora solo hay una versión
+ 
   initAvailability 
 };
