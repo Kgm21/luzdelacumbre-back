@@ -1,21 +1,34 @@
-// src/controllers/imagesController.js
-const Image = require('../models/Image');
+const fs = require('fs');
+const path = require('path');
+const { ObjectId } = require('mongodb');
 
-const getImages = async (req, res) => {
-  try {
-    const images = await Image.find().lean();
-    const formatted = images.map(img => ({
-      id:       img._id,
-      src:      img.src,
-      alt:      img.alt || img.filename,
-      folder:   img.folder,
-      filename: img.filename
-    }));
-    res.json(formatted);
-  } catch (err) {
-    console.error('Error en getImages:', err);
-    res.status(500).json({ message: 'Error al obtener imágenes', error: err.message });
-  }
+const getImages = (req, res) => {
+  const imagesDir = path.join(__dirname, '../../public/images');
+  const result = [];
+
+  fs.readdirSync(imagesDir, { withFileTypes: true }).forEach((dirent) => {
+    if (dirent.isDirectory()) {
+      const folder = dirent.name;
+      const folderPath = path.join(imagesDir, folder);
+
+      fs.readdirSync(folderPath).forEach((file) => {
+        const ext = path.extname(file).toLowerCase();
+        if (['.jpg', '.jpeg', '.png', '.webp'].includes(ext)) {
+          result.push({
+            id: new ObjectId().toHexString(),
+            src: `/images/${folder}/${file}`,
+            alt: `Imagen de ${folder}`,
+            folder,
+            filename: file,
+          });
+        }
+      });
+    }
+  });
+
+  res.json(result);
 };
 
-module.exports = { getImages };
+module.exports = {
+  getImages,
+};
