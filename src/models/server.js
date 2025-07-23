@@ -1,22 +1,22 @@
-// src/server.js  (o donde tengas tu clase Server)
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs'); // Agregamos fs para depuración
 const { dbConnection } = require('../database/config');
 
 class Server {
   constructor() {
-    this.app  = express();
+    this.app = express();
     this.port = process.env.PORT || 3000;
 
     // Rutas base
-    this.authPath        = '/api/auth';
-    this.usuariosPath    = '/api/usuarios';
-    this.roomsPath       = '/api/rooms';
-    this.bookingsPath    = '/api/bookings';
-    this.availabilityPath= '/api/availability';
-    this.contactPath     = '/api/contact';
-    this.imagesPath      = '/api/images';
+    this.authPath = '/api/auth';
+    this.usuariosPath = '/api/usuarios';
+    this.roomsPath = '/api/rooms';
+    this.bookingsPath = '/api/bookings';
+    this.availabilityPath = '/api/availability';
+    this.contactPath = '/api/contact';
+    this.imagesPath = '/api/images';
 
     // Conectar DB
     this.conectarDB();
@@ -47,10 +47,24 @@ class Server {
     this.app.use(cors());
     this.app.use(express.json());
 
-    // Servir estáticos (opcional)
-    this.app.use(express.static(path.join(__dirname, '../public')));
-    // Exponer carpeta de imágenes subidas
-    this.app.use('/images', express.static(path.join(__dirname, '../public/images')));
+    // Servir la carpeta public como raíz
+    const publicPath = path.join(__dirname, '../public');
+    this.app.use(express.static(publicPath));
+
+    // Servir la carpeta images específicamente
+    const imagesPath = path.join(__dirname, '../public/images');
+    this.app.use('/images', express.static(imagesPath));
+
+    // Endpoint de depuración para verificar archivos
+    this.app.get('/test-images', (req, res) => {
+      fs.readdir(imagesPath, (err, folders) => {
+        if (err) return res.status(500).json({ error: err.message });
+        fs.readdir(path.join(imagesPath, 'cabana1'), (err2, files) => {
+          if (err2) return res.status(500).json({ error: err2.message });
+          res.json({ folders, filesInCabana1: files });
+        });
+      });
+    });
   }
 
   routes() {
@@ -58,12 +72,12 @@ class Server {
     this.app.use(this.imagesPath, require('../routes/images'));
 
     // Resto de rutas
-    this.app.use(this.authPath,        require('../routes/auth'));
-    this.app.use(this.usuariosPath,    require('../routes/users'));
-    this.app.use(this.roomsPath,       require('../routes/rooms'));
-    this.app.use(this.bookingsPath,    require('../routes/bookings'));
-    this.app.use(this.availabilityPath,require('../routes/availability'));
-    this.app.use(this.contactPath,     require('../routes/contact'));
+    this.app.use(this.authPath, require('../routes/auth'));
+    this.app.use(this.usuariosPath, require('../routes/users'));
+    this.app.use(this.roomsPath, require('../routes/rooms'));
+    this.app.use(this.bookingsPath, require('../routes/bookings'));
+    this.app.use(this.availabilityPath, require('../routes/availability'));
+    this.app.use(this.contactPath, require('../routes/contact'));
   }
 
   listen() {
