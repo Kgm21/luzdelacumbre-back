@@ -44,28 +44,29 @@ class Server {
   }
 
   middlewares() {
-    this.app.use(cors());
-    this.app.use(express.json());
+  this.app.use(cors());
+  this.app.use(express.json());
 
-    // Servir la carpeta public como raíz
-    const publicPath = path.join(__dirname, '../public');
-    this.app.use(express.static(publicPath));
+  // Ruta correcta hacia public
+  const publicPath = path.join(__dirname, '../../public');
+  this.app.use(express.static(publicPath));
 
-    // Servir la carpeta images específicamente
-    const imagesPath = path.join(__dirname, '../public/images');
-    this.app.use('/images', express.static(imagesPath));
+  // Ruta correcta hacia imágenes
+  const imagesPath = path.join(__dirname, '../../public/images');
+  this.app.use('/images', express.static(imagesPath));
 
-    // Endpoint de depuración para verificar archivos
-    this.app.get('/test-images', (req, res) => {
-      fs.readdir(imagesPath, (err, folders) => {
-        if (err) return res.status(500).json({ error: err.message });
-        fs.readdir(path.join(imagesPath, 'cabana1'), (err2, files) => {
-          if (err2) return res.status(500).json({ error: err2.message });
-          res.json({ folders, filesInCabana1: files });
-        });
-      });
+ this.app.get('/api/test-images', (req, res) => {
+  const imagesPath = path.join(__dirname, '../../public/images'); // asegúrate de tener esta ruta bien
+  fs.readdir(imagesPath, (err, folders) => {
+    if (err) return res.status(500).json({ error: err.message });
+    fs.readdir(path.join(imagesPath, 'cabana1'), (err2, files) => {
+      if (err2) return res.status(500).json({ error: err2.message });
+      res.json({ folders, filesInCabana1: files });
     });
+  });
+});
   }
+
 
   routes() {
     // Ruta de la galería
