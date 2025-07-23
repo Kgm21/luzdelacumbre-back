@@ -1,3 +1,4 @@
+// src/server.js  (o donde tengas tu clase Server)
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -5,28 +6,28 @@ const { dbConnection } = require('../database/config');
 
 class Server {
   constructor() {
-    this.app = express();
+    this.app  = express();
     this.port = process.env.PORT || 3000;
 
-    // Definir rutas base
-    this.authPath = '/api/auth';
-    this.usuariosPath = '/api/usuarios';
-    this.roomsPath = '/api/rooms';
-    this.bookingsPath = '/api/bookings';
-    this.availabilityPath = '/api/availability';
-    
-    this.contactPath = '/api/contact';
+    // Rutas base
+    this.authPath        = '/api/auth';
+    this.usuariosPath    = '/api/usuarios';
+    this.roomsPath       = '/api/rooms';
+    this.bookingsPath    = '/api/bookings';
+    this.availabilityPath= '/api/availability';
+    this.contactPath     = '/api/contact';
+    this.imagesPath      = '/api/images';
 
-    // Conectar a base de datos
+    // Conectar DB
     this.conectarDB();
 
     // Middlewares
     this.middlewares();
 
-    // Rutas de la aplicación
+    // Rutas
     this.routes();
 
-    // Manejo de rutas no encontradas
+    // 404
     this.app.use((req, res) => {
       res.status(404).json({ message: 'Ruta no encontrada' });
     });
@@ -37,36 +38,37 @@ class Server {
       await dbConnection();
       console.log('Base de datos conectada');
     } catch (error) {
-      console.error('Error al conectar con la base de datos:', error);
+      console.error('Error DB:', error);
       throw new Error('No se pudo conectar con la base de datos');
     }
   }
 
   middlewares() {
     this.app.use(cors());
-
-    // Parseo de cuerpo JSON
     this.app.use(express.json());
 
-    // Archivos estáticos
-    this.app.use(express.static('public'));
+    // Servir estáticos (opcional)
     this.app.use(express.static(path.join(__dirname, '../public')));
+    // Exponer carpeta de imágenes subidas
     this.app.use('/images', express.static(path.join(__dirname, '../public/images')));
   }
 
   routes() {
-    this.app.use(this.authPath, require('../routes/auth'));
-    this.app.use(this.usuariosPath, require('../routes/users'));
-    this.app.use(this.roomsPath, require('../routes/rooms'));
-    this.app.use(this.bookingsPath, require('../routes/bookings'));
-    this.app.use(this.availabilityPath, require('../routes/availability'));
-  
-    this.app.use(this.contactPath, require('../routes/contact'));
+    // Ruta de la galería
+    this.app.use(this.imagesPath, require('../routes/images'));
+
+    // Resto de rutas
+    this.app.use(this.authPath,        require('../routes/auth'));
+    this.app.use(this.usuariosPath,    require('../routes/users'));
+    this.app.use(this.roomsPath,       require('../routes/rooms'));
+    this.app.use(this.bookingsPath,    require('../routes/bookings'));
+    this.app.use(this.availabilityPath,require('../routes/availability'));
+    this.app.use(this.contactPath,     require('../routes/contact'));
   }
 
   listen() {
     this.app.listen(this.port, () => {
-      console.log('Servidor en línea en el puerto:', this.port);
+      console.log(`Servidor en línea en el puerto ${this.port}`);
     });
   }
 }
