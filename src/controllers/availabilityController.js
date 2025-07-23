@@ -133,9 +133,9 @@ const findAvailableRooms = async (req, res) => {
     }
 
     const start = new Date(checkInDate);
-    start.setUTCHours(0,0,0,0);
+    start.setUTCHours(0, 0, 0, 0);
     const end = new Date(checkOutDate);
-    end.setUTCHours(0,0,0,0);
+    end.setUTCHours(0, 0, 0, 0);
 
     if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) {
       return res.status(400).json({ message: 'Fechas inválidas. Asegúrate de que la fecha de salida es posterior a la de entrada.' });
@@ -146,84 +146,76 @@ const findAvailableRooms = async (req, res) => {
       return res.status(400).json({ message: 'Número de huéspedes inválido.' });
     }
 
-    // 1. Obtener todas las habitaciones
-    const allRooms = await Room.find();
+    // 🔎 1. Obtener solo habitaciones habilitadas (disponibles)
+    const allRooms = await Room.find({ isAvailable: true });
     if (allRooms.length === 0) {
-      return res.json([]); // No hay habitaciones registradas
+      return res.json([]);
     }
 
-    // 2. Encontrar las IDs de las habitaciones NO disponibles para el rango de fechas
-    //    Esto incluye habitaciones con reservas o marcadas como no disponibles directamente.
-
-    // Días a buscar dentro del rango de checkIn y checkOut (excluyendo el checkOut para la disponibilidad)
+    // 🔍 2. Generar el rango de fechas para consultar disponibilidad
     const datesInRange = [];
     let current = new Date(start);
-    while (current < end) { // Iterar hasta el día anterior al checkOutDate
-      datesInRange.push(new Date(current)); // Clonar para evitar mutaciones
+    while (current < end) {
+      datesInRange.push(new Date(current));
       current.setUTCDate(current.getUTCDate() + 1);
     }
 
-    // Buscar disponibilidades marcadas como NO disponibles (isAvailable: false)
+    // 📆 3. Buscar fechas marcadas como no disponibles
     const unavailableAvailabilityRecords = await Availability.find({
       date: { $in: datesInRange },
       isAvailable: false
     });
 
+    // 📘 4. Buscar reservas que interfieran con el rango
     const bookedRoomsInDateRange = await Booking.find({
       $or: [
-        { checkInDate: { $lt: end, $gte: start } }, // Bookings starting within the range
-        { checkOutDate: { $gt: start, $lte: end } }, // Bookings ending within the range
-        { checkInDate: { $lte: start }, checkOutDate: { $gte: end } } // Bookings spanning the whole range
+        { checkInDate: { $lt: end, $gte: start } },
+        { checkOutDate: { $gt: start, $lte: end } },
+        { checkInDate: { $lte: start }, checkOutDate: { $gte: end } }
       ]
     });
 
     const unavailableRoomIds = new Set();
 
-    // Add rooms from explicit unavailability
+    // ➕ Agregar habitaciones no disponibles por disponibilidad explícita
     unavailableAvailabilityRecords.forEach(record => {
-        unavailableRoomIds.add(record.roomId.toString());
+      unavailableRoomIds.add(record.roomId.toString());
     });
 
-    // Add rooms from existing bookings for each day in the range
+    // ➕ Agregar habitaciones con reservas conflictivas
     bookedRoomsInDateRange.forEach(booking => {
-        let bookingCur = new Date(booking.checkInDate);
-        bookingCur.setUTCHours(0,0,0,0);
-        let bookingEnd = new Date(booking.checkOutDate);
-        bookingEnd.setUTCHours(0,0,0,0);
+      let bookingCur = new Date(booking.checkInDate);
+      bookingCur.setUTCHours(0, 0, 0, 0);
+      let bookingEnd = new Date(booking.checkOutDate);
+      bookingEnd.setUTCHours(0, 0, 0, 0);
 
-        // Check each day in the requested date range against the booking's date range
-        let tempCheck = new Date(start); // Start checking from the requested check-in
-        while(tempCheck < end) { // Up to (but not including) the requested check-out
-            if (tempCheck >= bookingCur && tempCheck < bookingEnd) {
-                // If any day in the requested range is within this booking's range,
-                // then this room is unavailable for the requested period.
-                unavailableRoomIds.add(booking.roomId.toString());
-                break; // No need to check other days for this booking
-            }
-            tempCheck.setUTCDate(tempCheck.getUTCDate() + 1);
+      let tempCheck = new Date(start);
+      while (tempCheck < end) {
+        if (tempCheck >= bookingCur && tempCheck < bookingEnd) {
+          unavailableRoomIds.add(booking.roomId.toString());
+          break;
         }
+        tempCheck.setUTCDate(tempCheck.getUTCDate() + 1);
+      }
     });
 
-
-    // Filtrar las habitaciones que NO están disponibles
+    // ✅ 5. Filtrar habitaciones que están disponibles y tienen capacidad suficiente
     const availableRooms = allRooms.filter(room => {
-      // Excluir habitaciones que están explícitamente no disponibles en alguna fecha del rango
       if (unavailableRoomIds.has(room._id.toString())) {
         return false;
       }
-      // Asegurarse de que la capacidad de la habitación es suficiente
       return room.capacity >= numGuests;
     });
 
-    // 3. Devolver las habitaciones disponibles
-    // IMPORTANT: Return an array, not an object with a 'msg' property.
-    return res.json(availableRooms); // <-- This is the crucial change!
+    // 📤 6. Devolver la lista final
+    return res.json(availableRooms);
 
   } catch (err) {
     console.error('findAvailableRooms error:', err);
     return res.status(500).json({ message: 'Error al buscar habitaciones disponibles', error: err.message });
   }
 };
+
 module.exports = {
   initAvailability,
   setAvailability,
