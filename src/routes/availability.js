@@ -1,13 +1,14 @@
+// src/routes/availability.js
 const { Router } = require('express');
 const { check } = require('express-validator');
 const {
+  initAvailability,
   setAvailability,
   getAvailability,
   getAvailabilityById,
+  findAvailableRooms,
   updateAvailability,
   deleteAvailability,
- 
-  initAvailability
 } = require('../controllers/availabilityController');
 
 const { validateFields } = require('../middlewares/validateFields');
@@ -17,56 +18,77 @@ const { isValidRoom } = require('../helpers/dbValidators');
 
 const router = Router();
 
-// ✅ Rutas específicas (deben ir antes que /:id)
-router.post('/init', [
-  validateJWT,
-  isAdminRole,
-  validateFields
-], initAvailability);
+// Inicializa disponibilidad (admin)
+router.post(
+  '/init',
+  [ validateJWT, isAdminRole, validateFields ],
+  initAvailability
+);
 
+// Listar todas (admin)
+router.get(
+  '/',
+  [ validateJWT, isAdminRole, validateFields ],
+  getAvailability
+);
 
+// Obtener por ID (admin)
+router.get(
+  '/:id',
+  [ validateJWT, isAdminRole, check('id','ID inválido').isMongoId(), validateFields ],
+  getAvailabilityById
+);
 
+// Crear un día de disponibilidad (admin)
+router.post(
+  '/',
+  [
+    validateJWT,
+    isAdminRole,
+    check('roomId','ID de habitación obligatorio').isMongoId(),
+    check('roomId').custom(isValidRoom),
+    check('date','Fecha obligatoria').isISO8601(),
+    check('isAvailable','isAvailable debe ser booleano').isBoolean(),
+    validateFields
+  ],
+  setAvailability
+);
 
-// ✅ Rutas protegidas para admin
-router.get('/', [
-  validateJWT,
-  isAdminRole,
-  validateFields,
-], getAvailability);
+// Actualizar disponibilidad por ID (admin)
+router.put(
+  '/:id',
+  [
+    validateJWT,
+    isAdminRole,
+    check('id','ID inválido').isMongoId(),
+    check('roomId').optional().isMongoId(),
+    check('roomId').optional().custom(isValidRoom),
+    check('date','Fecha inválida').optional().isISO8601(),
+    check('isAvailable','isAvailable debe ser booleano').optional().isBoolean(),
+    validateFields
+  ],
+  updateAvailability
+);
 
-router.get('/:id', [
-  validateJWT,
-  isAdminRole,
-  check('id', 'No es un ID válido').isMongoId(),
-  validateFields,
-], getAvailabilityById);
+// Eliminar disponibilidad por ID (admin)
+router.delete(
+  '/:id',
+  [ validateJWT, isAdminRole, check('id','ID inválido').isMongoId(), validateFields ],
+  deleteAvailability
+);
 
-router.post('/', [
-  validateJWT,
-  isAdminRole,
-  check('roomId', 'El ID de la habitación es obligatorio').isMongoId(),
-  check('roomId').custom(isValidRoom),
-  check('date', 'La fecha es obligatoria').isDate(),
-  check('isAvailable', 'El estado de disponibilidad es obligatorio').isBoolean(),
-  validateFields,
-], setAvailability);
-
-router.put('/:id', [
-  validateJWT,
-  isAdminRole,
-  check('id', 'No es un ID válido').isMongoId(),
-  check('roomId').optional().isMongoId(),
-  check('roomId').optional().custom(isValidRoom),
-  check('date', 'La fecha debe ser válida').optional().isDate(),
-  check('isAvailable', 'El estado de disponibilidad debe ser booleano').optional().isBoolean(),
-  validateFields,
-], updateAvailability);
-
-router.delete('/:id', [
-  validateJWT,
-  isAdminRole,
-  check('id', 'No es un ID válido').isMongoId(),
-  validateFields,
-], deleteAvailability);
+// Buscar habitaciones disponibles entre dos fechas y por cantidad de pasajeros
+router.get(
+  '/search/rooms',
+  [
+    // No protegida o con JWT segun tu lógica
+    check('checkInDate','checkInDate obligatorio').isISO8601(),
+    check('checkOutDate','checkOutDate obligatorio').isISO8601(),
+    check('guests','guests obligatorio y entero').isInt({ min: 1 }),
+    validateFields
+  ],
+  findAvailableRooms
+);
 
 module.exports = router;
+
