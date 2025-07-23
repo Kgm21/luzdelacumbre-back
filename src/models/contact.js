@@ -1,45 +1,15 @@
-// src/models/Contact.js
-const mongoose = require('mongoose');
+const { Schema, model } = require('mongoose');
 
-const contactSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: true,
-    trim: true,
+const ContactSchema = new Schema(
+  {
+    name: { type: String, required: true },
+    email: { type: String, required: true },
+    phone: { type: String },
+    message: { type: String, required: true },
+    response: { type: String },
+    status: { type: String, default: 'pending', enum: ['pending', 'responded'] },
   },
-  email: {
-    type: String,
-    required: true,
-    trim: true,
-    match: [/^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/, 'Correo electrónico inválido'],
-  },
-  phone: {
-    type: String,
-    required: false,
-    trim: true,
-  },
-  message: {
-    type: String,
-    required: true,
-    trim: true,
-  },
-  status: {
-    type: String,
-    enum: ['pending', 'responded'],
-    default: 'pending',
-  },
-  response: {
-    type: String,
-    default: '',
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now,
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now,
-  },
-});
+  { timestamps: true }
+);
 
-module.exports = mongoose.model('Contact', contactSchema);
+module.exports = model('Contact', ContactSchema);

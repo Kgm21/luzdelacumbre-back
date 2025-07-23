@@ -7,22 +7,21 @@ const createRoom = async (req, res) => {
   try {
     const { roomNumber, price, description, imageUrls, capacity } = req.body;
 
+    // Validaciones de tipos y contenido
     if (!roomNumber || typeof roomNumber !== 'string' || roomNumber.trim() === '') {
       return res.status(400).json({ message: 'Número de habitación inválido o faltante' });
     }
 
-    if (typeof price !== 'number' || isNaN(price) || price <= 0) {
+    if (price === undefined || typeof price !== 'number' || isNaN(price) || price <= 0) {
       return res.status(400).json({ message: 'Precio debe ser un número positivo' });
     }
 
-    if (imageUrls !== undefined) {
-      if (!Array.isArray(imageUrls) || !imageUrls.every(url => typeof url === 'string')) {
-        return res.status(400).json({ message: 'imageUrls debe ser un arreglo de strings' });
-      }
+    if (capacity === undefined || typeof capacity !== 'number' || isNaN(capacity) || capacity < 1) {
+      return res.status(400).json({ message: 'La capacidad debe ser un número mayor o igual a 1' });
     }
 
-    if (typeof capacity !== 'number' || isNaN(capacity) || capacity < 1) {
-      return res.status(400).json({ message: 'La capacidad debe ser un número mayor o igual a 1' });
+    if (imageUrls !== undefined && (!Array.isArray(imageUrls) || !imageUrls.every(url => typeof url === 'string'))) {
+      return res.status(400).json({ message: 'imageUrls debe ser un arreglo de strings' });
     }
 
     const newRoom = new Room({
@@ -35,17 +34,19 @@ const createRoom = async (req, res) => {
 
     await newRoom.save();
 
-    res.status(201).json({
-      message: 'Habitación creada',
+    return res.status(201).json({
+      message: 'Habitación creada exitosamente',
       room: newRoom,
     });
   } catch (error) {
+    console.error('Error en createRoom:', error);
     if (error.code === 11000) {
       return res.status(400).json({ message: 'El número de habitación ya existe' });
     }
-    res.status(500).json({ message: 'Error al crear la habitación', error: error.message });
+    return res.status(500).json({ message: 'Error al crear la habitación', error: error.message });
   }
 };
+
 
 const getRooms = async (req, res) => {
   try {
@@ -121,7 +122,7 @@ const getRoomById = async (req, res) => {
       return res.status(404).json({ message: 'Habitación no encontrada' });
     }
 
-    res.json({ ...room, id: room._id.toString() });
+    res.json({ room: { ...room, id: room._id.toString() } });
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener la habitación', error: error.message });
   }
@@ -152,6 +153,13 @@ const updateRoom = async (req, res) => {
       if (typeof roomNumber !== 'string' || roomNumber.trim() === '') {
         return res.status(400).json({ message: 'Número de habitación inválido' });
       }
+
+      // 🔐 Verificar si el número ya existe en otra habitación
+      const existing = await Room.findOne({ roomNumber: roomNumber.trim(), _id: { $ne: id } });
+      if (existing) {
+        return res.status(400).json({ message: 'El número de habitación ya existe' });
+      }
+
       fieldsToUpdate.roomNumber = roomNumber.trim();
     }
 
@@ -204,6 +212,7 @@ const updateRoom = async (req, res) => {
     res.status(500).json({ message: 'Error al actualizar la habitación', error: error.message });
   }
 };
+
 
 const deleteRoom = async (req, res) => {
   try {

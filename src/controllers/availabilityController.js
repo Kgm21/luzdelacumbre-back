@@ -86,7 +86,7 @@ const initAvailability = async (req, res) => {
 
     const result = await Availability.bulkWrite(bulkOps, { ordered: false });
     console.log('bulkWrite result:', result);
-    res.json({ message: 'Disponibilidad inicializada respetando reservas y bloqueos', result });
+    res.json({ message: `Disponibilidad inicializada desde ${startStr} hasta ${endStr}, respetando reservas y bloqueos.`, result });
 
   } catch (error) {
     console.error('Error general en initAvailability:', error);
