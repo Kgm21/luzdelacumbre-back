@@ -89,22 +89,33 @@ const createBooking = async (req, res) => {
 
 const getBookings = async (req, res) => {
   try {
-    const bookings = await Booking.find().populate('roomId');
+    const bookings = await Booking.find()
+      .populate('roomId')     // ya lo tenías
+      .populate('userId');    // 👉 agregá esto
+
     return res.json(bookings);
   } catch (error) {
     return res.status(500).json({ message: 'Error al obtener reservas', error: error.message });
   }
 };
 
+
 const getBookingById = async (req, res) => {
   try {
-    const booking = await Booking.findById(req.params.id).populate('roomId');
-    if (!booking) return res.status(404).json({ message: 'Reserva no encontrada' });
+    const booking = await Booking.findById(req.params.id)
+      .populate('roomId')
+      .populate('userId'); // 👈 necesario para traer nombre, email, etc.
+
+    if (!booking) {
+      return res.status(404).json({ message: 'Reserva no encontrada' });
+    }
+
     return res.json(booking);
   } catch (error) {
     return res.status(500).json({ message: 'Error al obtener reserva', error: error.message });
   }
 };
+
 
 const updateBooking = async (req, res) => {
   try {
