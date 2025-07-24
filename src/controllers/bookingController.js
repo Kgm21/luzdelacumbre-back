@@ -28,6 +28,13 @@ const createBooking = async (req, res) => {
       return res.status(400).json({ message: 'La fecha de check-out debe ser posterior a la de check-in.' });
     }
 
+    // Validar mínimo de 5 noches
+    const nights = Math.ceil((checkOut - checkIn) / (1000 * 60 * 60 * 24));
+    const MIN_NIGHTS = 5;
+    if (nights < MIN_NIGHTS) {
+      return res.status(400).json({ message: `La reserva debe ser de al menos ${MIN_NIGHTS} noches.` });
+    }
+
     const room = await Room.findById(roomId);
     if (!room || !room.isAvailable) {
       return res.status(400).json({ message: 'La cabaña seleccionada no está disponible.' });
@@ -46,11 +53,6 @@ const createBooking = async (req, res) => {
 
     if (existingBookings.length > 0) {
       return res.status(400).json({ message: 'Ya existe una reserva para esa cabaña en las fechas indicadas.' });
-    }
-
-    const nights = Math.ceil((checkOut - checkIn) / (1000 * 60 * 60 * 24));
-    if (isNaN(nights) || nights <= 0) {
-      return res.status(400).json({ message: 'El rango de fechas no es válido.' });
     }
 
     if (typeof room.price !== 'number' || isNaN(room.price)) {
@@ -106,10 +108,36 @@ const getBookingById = async (req, res) => {
 
 const updateBooking = async (req, res) => {
   try {
+    const { checkInDate, checkOutDate, roomId } = req.body;
+
+    if (checkInDate && checkOutDate) {
+      const checkIn = new Date(checkInDate);
+      const checkOut = new Date(checkOutDate);
+
+      if (isNaN(checkIn.getTime()) || isNaN(checkOut.getTime())) {
+        return res.status(400).json({ message: 'Fechas inválidas.' });
+      }
+
+      if (checkIn >= checkOut) {
+        return res.status(400).json({ message: 'La fecha de check-out debe ser posterior a la de check-in.' });
+      }
+
+      const nights = Math.ceil((checkOut - checkIn) / (1000 * 60 * 60 * 24));
+      const MIN_NIGHTS = 5;
+      if (nights < MIN_NIGHTS) {
+        return res.status(400).json({ message: `La reserva debe ser de al menos ${MIN_NIGHTS} noches.` });
+      }
+    }
+
+    // Validar roomId si viene en el body
+    if (roomId && !mongoose.Types.ObjectId.isValid(roomId)) {
+      return res.status(400).json({ message: 'roomId inválido' });
+    }
+
     const booking = await Booking.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!booking) return res.status(404).json({ message: 'Reserva no encontrada' });
 
-    await syncAvailabilityUtil(); // 👈 sincroniza después de actualizar
+    await syncAvailabilityUtil(); // sincroniza después de actualizar
 
     return res.json({ message: 'Reserva actualizada', booking });
   } catch (error) {
