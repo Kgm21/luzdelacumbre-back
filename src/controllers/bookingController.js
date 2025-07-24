@@ -1,12 +1,13 @@
+
+
 const mongoose = require('mongoose');
-// src/controllers/bookingController.js
 const Booking = require('../models/Booking');
 const Room = require('../models/Room');
-const { syncAvailabilityUtil } = require('./availabilityController'); // 👈 importar utilidad
+const {syncAvailabilityUtil }= require('../controllers/availabilityController');
 
 const createBooking = async (req, res) => {
   try {
-    const { checkInDate, checkOutDate, roomId, userId } = req.body;
+    const { checkInDate, checkOutDate, roomId, userId, passengersCount } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(roomId)) {
       return res.status(400).json({ message: 'roomId inválido' });
@@ -16,7 +17,14 @@ const createBooking = async (req, res) => {
       return res.status(400).json({ message: 'userId inválido' });
     }
 
-    if (new Date(checkInDate) >= new Date(checkOutDate)) {
+    const checkIn = new Date(checkInDate);
+    const checkOut = new Date(checkOutDate);
+
+    if (isNaN(checkIn.getTime()) || isNaN(checkOut.getTime())) {
+      return res.status(400).json({ message: 'Fechas inválidas.' });
+    }
+
+    if (checkIn >= checkOut) {
       return res.status(400).json({ message: 'La fecha de check-out debe ser posterior a la de check-in.' });
     }
 
@@ -25,11 +33,14 @@ const createBooking = async (req, res) => {
       return res.status(400).json({ message: 'La cabaña seleccionada no está disponible.' });
     }
 
-    // Validar que no haya reservas que se solapen en esa habitación
+    // Validar que no haya reservas solapadas
     const existingBookings = await Booking.find({
       roomId,
       $or: [
-        { checkInDate: { $lt: new Date(checkOutDate) }, checkOutDate: { $gt: new Date(checkInDate) } }
+        {
+          checkInDate: { $lt: checkOut },
+          checkOutDate: { $gt: checkIn }
+        }
       ]
     });
 
@@ -37,17 +48,42 @@ const createBooking = async (req, res) => {
       return res.status(400).json({ message: 'Ya existe una reserva para esa cabaña en las fechas indicadas.' });
     }
 
-    const booking = new Booking(req.body);
+    const nights = Math.ceil((checkOut - checkIn) / (1000 * 60 * 60 * 24));
+    if (isNaN(nights) || nights <= 0) {
+      return res.status(400).json({ message: 'El rango de fechas no es válido.' });
+    }
+
+    if (typeof room.price !== 'number' || isNaN(room.price)) {
+      return res.status(400).json({ message: 'La habitación no tiene un precio válido.' });
+    }
+
+    const totalPrice = parseFloat((room.price * nights).toFixed(2));
+    if (isNaN(totalPrice)) {
+      return res.status(400).json({ message: 'No se pudo calcular el precio total.' });
+    }
+
+    const booking = new Booking({
+      userId,
+      roomId,
+      checkInDate: checkIn,
+      checkOutDate: checkOut,
+      passengersCount,
+      totalPrice
+    });
+
     await booking.save();
 
-   // await syncAvailabilityUtil();
+    await syncAvailabilityUtil();
 
-    return res.status(201).json({ message: 'Reserva creada', booking });
+    return res.status(201).json({ message: 'Reserva creada exitosamente', booking });
   } catch (error) {
     console.error('Error en createBooking:', error);
     return res.status(500).json({ message: 'Error al crear reserva', error: error.message });
   }
 };
+
+
+
 
 const getBookings = async (req, res) => {
   try {

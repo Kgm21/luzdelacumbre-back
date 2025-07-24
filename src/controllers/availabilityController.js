@@ -239,16 +239,14 @@ const findAvailableRooms = async (req, res) => {
     return res.status(500).json({ message: 'Error al buscar habitaciones disponibles', error: err.message });
   }
 };
-
 module.exports = {
   initAvailability,
+  syncAvailabilityWithBookings,
+  syncAvailabilityUtil, // ✅ agregalo acá
   setAvailability,
   getAvailability,
   getAvailabilityById,
   updateAvailability,
   deleteAvailability,
-  findAvailableRooms,
-  syncAvailabilityWithBookings,
-  syncAvailabilityUtil, // 👈 útil para controllers
+  findAvailableRooms
 };
-
