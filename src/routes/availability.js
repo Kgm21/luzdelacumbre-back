@@ -8,7 +8,7 @@ const {
   getAvailabilityById,
   findAvailableRooms,
   updateAvailability,
-  deleteAvailability,
+  deleteAvailability,syncAvailabilityWithBookings
 } = require('../controllers/availabilityController');
 
 const { validateFields } = require('../middlewares/validateFields');
@@ -68,6 +68,12 @@ router.put(
     validateFields
   ],
   updateAvailability
+);
+// Sincronizar disponibilidad con reservas reales
+router.post(
+  '/sync',
+  [validateJWT, isAdminRole, validateFields],
+  syncAvailabilityWithBookings
 );
 
 // Eliminar disponibilidad por ID (admin)

@@ -8,96 +8,134 @@ const initAvailability = async (req, res) => {
   try {
     const rooms = await Room.find();
 
-    // Rango de hoy hasta +5 meses
     const startDate = new Date();
-    startDate.setUTCHours(0,0,0,0);
+    startDate.setUTCHours(0, 0, 0, 0);
     const endDate = new Date();
-    endDate.setMonth(endDate.getMonth()+5);
-    endDate.setUTCHours(0,0,0,0);
+    endDate.setMonth(endDate.getMonth() + 5);
+    endDate.setUTCHours(0, 0, 0, 0);
 
-    // Strings para la respuesta
-    const startStr = startDate.toISOString().slice(0,10);
-    const endStr   = endDate  .toISOString().slice(0,10);
+    const startStr = startDate.toISOString().slice(0, 10);
+    const endStr = endDate.toISOString().slice(0, 10);
 
-    // 1. Reservas que intersectan el rango
     const bookings = await Booking.find({
-      checkInDate:  { $lte: endDate },
+      checkInDate: { $lte: endDate },
       checkOutDate: { $gte: startDate },
     });
 
-    // 2. Mapa de días reservados
     const reservedMap = new Map();
     bookings.forEach(({ roomId, checkInDate, checkOutDate }) => {
       let cur = new Date(checkInDate);
-      cur.setUTCHours(0,0,0,0);
+      cur.setUTCHours(0, 0, 0, 0);
       const end = new Date(checkOutDate);
-      end.setUTCHours(0,0,0,0);
+      end.setUTCHours(0, 0, 0, 0);
       while (cur <= end) {
-        reservedMap.set(`${roomId}-${cur.toISOString().slice(0,10)}`, true);
-        cur.setDate(cur.getDate()+1);
+        reservedMap.set(`${roomId}-${cur.toISOString().slice(0, 10)}`, true);
+        cur.setDate(cur.getDate() + 1);
       }
     });
 
-    // 3. Mapa de bloqueos previos (isAvailable: false)
     const existing = await Availability.find({
       date: { $gte: startDate, $lte: endDate },
-      isAvailable: false
+      isAvailable: false,
     });
+
     const blockedMap = new Map();
     existing.forEach(({ roomId, date }) => {
       const d = new Date(date);
-      d.setUTCHours(0,0,0,0);
-      blockedMap.set(`${roomId}-${d.toISOString().slice(0,10)}`, true);
+      d.setUTCHours(0, 0, 0, 0);
+      blockedMap.set(`${roomId}-${d.toISOString().slice(0, 10)}`, true);
     });
 
-    // 4. Bulk ops
     const ops = [];
-    rooms.forEach(room => {
+    rooms.forEach((room) => {
       let cur = new Date(startDate);
       while (cur <= endDate) {
-        const dUTC = new Date(Date.UTC(cur.getUTCFullYear(),cur.getUTCMonth(),cur.getUTCDate()));
-        const key = `${room._id}-${dUTC.toISOString().slice(0,10)}`;
+        const dUTC = new Date(Date.UTC(cur.getUTCFullYear(), cur.getUTCMonth(), cur.getUTCDate()));
+        const key = `${room._id}-${dUTC.toISOString().slice(0, 10)}`;
         const available = !reservedMap.has(key) && !blockedMap.has(key);
         ops.push({
           updateOne: {
             filter: { roomId: room._id, date: dUTC },
-            update: { $set: { isAvailable: available }, $currentDate: { updatedAt: true }},
-            upsert: true
-          }
+            update: {
+              $set: { isAvailable: available },
+              $currentDate: { updatedAt: true },
+            },
+            upsert: true,
+          },
         });
-        cur.setUTCDate(cur.getUTCDate()+1);
+        cur.setUTCDate(cur.getUTCDate() + 1);
       }
     });
 
     if (!ops.length) return res.json({ message: 'Nada para actualizar' });
 
-    const result = await Availability.bulkWrite(ops, { ordered:false });
+    const result = await Availability.bulkWrite(ops, { ordered: false });
     return res.json({
       message: `Disponibilidad inicializada desde ${startStr} hasta ${endStr}`,
-      result
+      result,
     });
-
   } catch (err) {
     console.error('initAvailability error:', err);
-    return res.status(500).json({ message:'Error al inicializar', error: err.message });
+    return res.status(500).json({ message: 'Error al inicializar', error: err.message });
+  }
+};
+
+// 🧠 Utilidad para sincronizar disponibilidad (sin req/res)
+const syncAvailabilityUtil = async () => {
+  const rooms = await Room.find();
+
+  for (const room of rooms) {
+    const roomId = room._id;
+
+    const unavailableDays = await Availability.find({
+      roomId,
+      isAvailable: false,
+    });
+
+    for (const unavailability of unavailableDays) {
+      const date = new Date(unavailability.date);
+      date.setUTCHours(0, 0, 0, 0);
+
+      const overlappingBooking = await Booking.findOne({
+        roomId,
+        checkInDate: { $lte: date },
+        checkOutDate: { $gt: date },
+      });
+
+      if (!overlappingBooking) {
+        unavailability.isAvailable = true;
+        await unavailability.save();
+      }
+    }
+  }
+
+  return true;
+};
+
+// 🎯 Handler Express que llama a la utilidad
+const syncAvailabilityWithBookings = async (req, res) => {
+  try {
+    await syncAvailabilityUtil();
+    return res.json({ ok: true, message: 'Disponibilidades sincronizadas correctamente' });
+  } catch (error) {
+    console.error('Error al sincronizar disponibilidades:', error);
+    return res.status(500).json({ message: 'Error al sincronizar disponibilidades', error: error.message });
   }
 };
 
 const setAvailability = async (req, res) => {
   const { roomId, date, isAvailable } = req.body;
-  // validaciones omitidas por brevedad...
   const d = new Date(date);
-  const day = new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));
+  const day = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
   const doc = await Availability.findOneAndUpdate(
     { roomId, date: day },
     { isAvailable, date: day },
-    { upsert:true, new:true }
+    { upsert: true, new: true }
   );
-  return res.json({ message:'Actualizado', availability:doc });
+  return res.json({ message: 'Actualizado', availability: doc });
 };
 
 const getAvailability = async (req, res) => {
-  // Lista paginada / filtros simples...
   const results = await Availability.find().limit(100);
   return res.json(results);
 };
@@ -105,23 +143,23 @@ const getAvailability = async (req, res) => {
 const getAvailabilityById = async (req, res) => {
   const { id } = req.params;
   const doc = await Availability.findById(id);
-  if (!doc) return res.status(404).json({ message:'No existe' });
+  if (!doc) return res.status(404).json({ message: 'No existe' });
   return res.json(doc);
 };
 
 const updateAvailability = async (req, res) => {
   const { id } = req.params;
   const fields = req.body;
-  const doc = await Availability.findByIdAndUpdate(id, fields, { new:true });
-  if (!doc) return res.status(404).json({ message:'No existe' });
-  return res.json({ message:'Actualizado', availability:doc });
+  const doc = await Availability.findByIdAndUpdate(id, fields, { new: true });
+  if (!doc) return res.status(404).json({ message: 'No existe' });
+  return res.json({ message: 'Actualizado', availability: doc });
 };
 
 const deleteAvailability = async (req, res) => {
   const { id } = req.params;
   const doc = await Availability.findByIdAndDelete(id);
-  if (!doc) return res.status(404).json({ message:'No existe' });
-  return res.json({ message:'Eliminado' });
+  if (!doc) return res.status(404).json({ message: 'No existe' });
+  return res.json({ message: 'Eliminado' });
 };
 
 const findAvailableRooms = async (req, res) => {
@@ -146,13 +184,9 @@ const findAvailableRooms = async (req, res) => {
       return res.status(400).json({ message: 'Número de huéspedes inválido.' });
     }
 
-    // 🔎 1. Obtener solo habitaciones habilitadas (disponibles)
     const allRooms = await Room.find({ isAvailable: true });
-    if (allRooms.length === 0) {
-      return res.json([]);
-    }
+    if (allRooms.length === 0) return res.json([]);
 
-    // 🔍 2. Generar el rango de fechas para consultar disponibilidad
     const datesInRange = [];
     let current = new Date(start);
     while (current < end) {
@@ -160,30 +194,25 @@ const findAvailableRooms = async (req, res) => {
       current.setUTCDate(current.getUTCDate() + 1);
     }
 
-    // 📆 3. Buscar fechas marcadas como no disponibles
     const unavailableAvailabilityRecords = await Availability.find({
       date: { $in: datesInRange },
-      isAvailable: false
+      isAvailable: false,
     });
 
-    // 📘 4. Buscar reservas que interfieran con el rango
     const bookedRoomsInDateRange = await Booking.find({
       $or: [
         { checkInDate: { $lt: end, $gte: start } },
         { checkOutDate: { $gt: start, $lte: end } },
-        { checkInDate: { $lte: start }, checkOutDate: { $gte: end } }
-      ]
+        { checkInDate: { $lte: start }, checkOutDate: { $gte: end } },
+      ],
     });
 
     const unavailableRoomIds = new Set();
-
-    // ➕ Agregar habitaciones no disponibles por disponibilidad explícita
-    unavailableAvailabilityRecords.forEach(record => {
+    unavailableAvailabilityRecords.forEach((record) => {
       unavailableRoomIds.add(record.roomId.toString());
     });
 
-    // ➕ Agregar habitaciones con reservas conflictivas
-    bookedRoomsInDateRange.forEach(booking => {
+    bookedRoomsInDateRange.forEach((booking) => {
       let bookingCur = new Date(booking.checkInDate);
       bookingCur.setUTCHours(0, 0, 0, 0);
       let bookingEnd = new Date(booking.checkOutDate);
@@ -199,17 +228,12 @@ const findAvailableRooms = async (req, res) => {
       }
     });
 
-    // ✅ 5. Filtrar habitaciones que están disponibles y tienen capacidad suficiente
-    const availableRooms = allRooms.filter(room => {
-      if (unavailableRoomIds.has(room._id.toString())) {
-        return false;
-      }
+    const availableRooms = allRooms.filter((room) => {
+      if (unavailableRoomIds.has(room._id.toString())) return false;
       return room.capacity >= numGuests;
     });
 
-    // 📤 6. Devolver la lista final
     return res.json(availableRooms);
-
   } catch (err) {
     console.error('findAvailableRooms error:', err);
     return res.status(500).json({ message: 'Error al buscar habitaciones disponibles', error: err.message });
@@ -223,5 +247,8 @@ module.exports = {
   getAvailabilityById,
   updateAvailability,
   deleteAvailability,
-  findAvailableRooms
+  findAvailableRooms,
+  syncAvailabilityWithBookings,
+  syncAvailabilityUtil, // 👈 útil para controllers
 };
+
