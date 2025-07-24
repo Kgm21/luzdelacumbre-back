@@ -5,10 +5,23 @@ const { syncAvailabilityUtil } = require('./availabilityController'); // 👈 im
 
 const createBooking = async (req, res) => {
   try {
+    const { checkInDate, checkOutDate, roomId } = req.body;
+
+    if (new Date(checkInDate) >= new Date(checkOutDate)) {
+      return res.status(400).json({ message: 'La fecha de check-out debe ser posterior a la de check-in.' });
+    }
+
+    const room = await Room.findById(roomId);
+    if (!room || !room.isAvailable) {
+      return res.status(400).json({ message: 'La cabaña seleccionada no está disponible.' });
+    }
+
+    // Podrías agregar aquí validación para conflictos con otras reservas.
+
     const booking = new Booking(req.body);
     await booking.save();
 
-    await syncAvailabilityUtil(); // 👈 sincroniza después de crear
+    await syncAvailabilityUtil();
 
     return res.status(201).json({ message: 'Reserva creada', booking });
   } catch (error) {
