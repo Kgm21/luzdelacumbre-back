@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 // src/controllers/bookingController.js
 const Booking = require('../models/Booking');
 const Room = require('../models/Room');
@@ -5,7 +6,15 @@ const { syncAvailabilityUtil } = require('./availabilityController'); // 👈 im
 
 const createBooking = async (req, res) => {
   try {
-    const { checkInDate, checkOutDate, roomId } = req.body;
+    const { checkInDate, checkOutDate, roomId, userId } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(roomId)) {
+      return res.status(400).json({ message: 'roomId inválido' });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ message: 'userId inválido' });
+    }
 
     if (new Date(checkInDate) >= new Date(checkOutDate)) {
       return res.status(400).json({ message: 'La fecha de check-out debe ser posterior a la de check-in.' });
@@ -16,15 +25,26 @@ const createBooking = async (req, res) => {
       return res.status(400).json({ message: 'La cabaña seleccionada no está disponible.' });
     }
 
-    // Podrías agregar aquí validación para conflictos con otras reservas.
+    // Validar que no haya reservas que se solapen en esa habitación
+    const existingBookings = await Booking.find({
+      roomId,
+      $or: [
+        { checkInDate: { $lt: new Date(checkOutDate) }, checkOutDate: { $gt: new Date(checkInDate) } }
+      ]
+    });
+
+    if (existingBookings.length > 0) {
+      return res.status(400).json({ message: 'Ya existe una reserva para esa cabaña en las fechas indicadas.' });
+    }
 
     const booking = new Booking(req.body);
     await booking.save();
 
-    await syncAvailabilityUtil();
+   // await syncAvailabilityUtil();
 
     return res.status(201).json({ message: 'Reserva creada', booking });
   } catch (error) {
+    console.error('Error en createBooking:', error);
     return res.status(500).json({ message: 'Error al crear reserva', error: error.message });
   }
 };
